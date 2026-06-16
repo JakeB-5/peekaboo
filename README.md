@@ -7,7 +7,7 @@
 ---
 
 > [!NOTE]
-> **Status: planning / design stage.** This repository currently holds the planning & design document set only — there is no application code yet. The stack is decided (Tauri v2, macOS) and the architecture is specified.
+> **Status: v0.1.0 — implemented for macOS.** The app builds and is unit-tested; build it yourself with `npm run tauri build` (see [BUILD.md](BUILD.md)). The real-world stealth behaviors (screen-share hiding, global panic, click-through, concealment) are verified manually on your own Mac — see the checklists in [BUILD.md](BUILD.md) and [PLAN.md](PLAN.md).
 
 ## What is Peekaboo?
 
@@ -15,7 +15,7 @@ Peekaboo floats any web page as a transparent, resizable window that sits above 
 
 The whole product fits in one line: **"visible only when you want it, gone the instant you need it."**
 
-## Features (planned)
+## Features
 
 | | Feature | What it does |
 |:--:|---|---|
@@ -25,6 +25,26 @@ The whole product fits in one line: **"visible only when you want it, gone the i
 | 🙈 | **App concealment** | Hidden from the Dock, Cmd-Tab, and menu bar (Accessory app) |
 | 🎚️ | **Opacity control** | Separate "idle" and "hover" opacity levels you tune yourself |
 | 🖥️ | **Screen-share hiding** | Best-effort only — see the honest caveat below |
+
+## How to use
+
+> The images below are UI renders of Peekaboo's real interface, generated from its own HTML/CSS. To replace them with live screenshots, capture on macOS — first turn **Screen-share hiding** off in Settings, since content protection can exclude the window from screenshots on macOS ≤ 14.
+
+**1 · Float a page.** Launch Peekaboo and it opens as a faint, always-on-top *ghost* overlay. At its idle opacity it's barely there, and clicks pass straight through to the app underneath.
+
+![Peekaboo in its ghost state, floating faintly above the desktop](docs/images/usage-ghost.png)
+
+**2 · Reveal on hover.** Move your cursor into the overlay's hot-zone and the content sharpens to full opacity so you can read it. Move away and it fades back to a ghost.
+
+![Peekaboo at full opacity once the cursor enters the hot-zone](docs/images/usage-reveal.png)
+
+**3 · Tune it.** Click ☰ to open Settings — set the URL and bookmarks, the idle/hover opacity, window size, the 3×3 hot-zone, the panic hotkey, and the concealment toggles.
+
+![Peekaboo's settings panel](docs/images/usage-settings.png)
+
+**4 · Vanish.** Press the panic hotkey (default ⌘⇧H) — or the ✕ button — and the window disappears instantly, even when another app is focused. Press it again to bring it back exactly where you left off.
+
+![The desktop after the panic hotkey has hidden Peekaboo](docs/images/usage-panic.png)
 
 ## How it works
 
@@ -60,8 +80,8 @@ The full planning & design docs live in [`docs/`](docs/) — a 6-page, dark-them
 
 ## Status & roadmap
 
-Planning is complete; implementation has not started. Planned path: **scaffold → MVP (overlay + panic) → stealth core (hover-reveal) → concealment → polish & distribution.** See the [roadmap](docs/roadmap.html).
+**v0.1.0 — implemented.** Phases 0–4 are done: scaffold → MVP (overlay + panic) → stealth core (hover-reveal) → concealment → settings, persistence & distribution. The automated gates (build, clippy, eslint, tsc, unit tests) pass; the real-world stealth behaviors are verified manually on your Mac. See the [roadmap](docs/roadmap.html) and [PLAN.md](PLAN.md).
 
 ---
 
-<sub>A planning exercise for a personal tool. Use responsibly. 🫣</sub>
+<sub>A personal tool. Use responsibly. 🫣</sub>
