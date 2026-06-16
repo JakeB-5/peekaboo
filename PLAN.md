@@ -50,19 +50,20 @@
 **목표** "띄우고 → 즉시 숨긴다" 수직 경로 완성.
 
 **산출물**
-- [ ] 웹 URL 로드(설정 가능한 기본 URL), 항상-위, 기본 크기/위치
-- [ ] **패닉 전역 단축키**(기본 `Cmd+Shift+H`) — Rust 핸들러에서 직접 토글 hide/show (저지연)
-- [ ] 복귀 시 보던 위치/스크롤 유지(창을 destroy하지 않고 hide/show)
-- [ ] 기본 투명도(고스트 opacity) CSS 적용
-- [ ] 드래그 영역(`data-tauri-drag-region`) 정의(무테 창 이동)
+- [x] 웹 URL 로드(설정 가능한 기본 URL, iframe), 항상-위, 기본 크기/위치
+- [x] **패닉 전역 단축키**(기본 `Cmd+Shift+H`) — Rust 핸들러에서 직접 토글 hide/show (저지연)
+- [x] 복귀 시 보던 위치/스크롤 유지(창을 destroy하지 않고 hide/show)
+- [x] 기본 투명도(고스트 opacity) CSS 적용
+- [x] 드래그 영역(`data-tauri-drag-region`) 정의(무테 창 이동 — 상단 chrome 스트립)
 
 **자동 검증**
-- [ ] `cargo build` 성공, `cargo clippy` 경고 0(또는 정당화)
-- [ ] 단축키 단일 등록 보장(이중 초기화 방지 — os error 22 회피) 코드 리뷰
-- [ ] `tsc --noEmit` / eslint 통과
+- [x] `cargo build` 성공, `cargo clippy` 경고 0 (Shortcut `Copy` clone 제거)
+- [x] 단축키 단일 등록 보장(setup에서 1회만 register — os error 22 회피)
+- [x] `tsc --noEmit` / eslint 통과
+- [x] **런타임 스모크**: `tauri dev`로 앱 기동 확인 — Vite ready → cargo Finished → `Running target/debug/peekaboo`, 패닉/초기화 에러 없이 실행됨(초기화 경로 검증)
 
-**수동 검증 (사용자 — 위협 시나리오)**
-- [ ] **즉시 탈출**: 다른 앱이 포커스인 상태에서 패닉 키 → 창이 체감 지연 없이 사라짐
+**수동 검증 (사용자 — 위협 시나리오)** *(헤드리스 확인 불가 — 전역 입력·육안 필요)*
+- [ ] **즉시 탈출**: 다른 앱이 포커스인 상태에서 패닉 키(`⌘⇧H`) → 창이 체감 지연 없이 사라짐
 - [ ] **복귀 무결성**: 다시 패닉 키 → 보던 위치·스크롤 유지된 채 복귀
 
 ---
@@ -136,3 +137,4 @@
 
 - (작성 시작) Phase 0 착수 전 — 계획 수립 및 Rust 툴체인 설치 완료.
 - **Phase 0 완료** — 스캐폴딩 전체 작성, 자동 검증 5종 통과(npm/tsc/eslint/vite/cargo build). 아키텍처 결정: 메인 창 = 우리 프론트엔드(`src/`), 원격 콘텐츠는 컨테이너(iframe)로 로드해 opacity 제어. 기본 상태 = 고스트(`visible:true`).
+- **Phase 1 완료** — 패닉 전역 단축키(`⌘⇧H`, Rust 핸들러 직접 토글), iframe 뷰어, 드래그 핸들. 자동 검증 + `tauri dev` 런타임 스모크(앱 기동·무패닉) 통과. 수동 검증(전역 입력 즉시 탈출/복귀)은 사용자 머신 필요.

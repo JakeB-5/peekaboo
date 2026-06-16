@@ -14,7 +14,15 @@
       transparent window + CSS-opacity model stays under our control.
     -->
     <main id="viewer" data-state="ghost">
-      <div class="placeholder" data-tauri-drag-region>Peekaboo</div>
+      <!-- Borderless window: this top strip is the drag handle. In Phase 2 it
+           becomes the hover hotzone; in Phase 4 it hosts the mini-toolbar. -->
+      <div id="chrome" data-tauri-drag-region>
+        <span class="drag-hint" aria-hidden="true">⠿</span>
+      </div>
+      <!-- Remote content is framed so we keep control of opacity/reveal.
+           Some sites block framing (X-Frame-Options / CSP) — known limitation
+           (feature-spec risk #3). -->
+      <iframe id="content" referrerpolicy="no-referrer" title="Peekaboo viewer"></iframe>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

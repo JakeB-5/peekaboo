@@ -26,6 +26,12 @@ body {
   width: 100%;
   height: 100%;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #2a3038;
+  background: rgba(14, 18, 24, 0.98);
   transition: opacity var(--reveal-transition);
 }
 
@@ -40,17 +46,30 @@ body {
   opacity: 0;
 }
 
-/* Phase 0 placeholder — replaced by the web viewer in Phase 1. */
-.placeholder {
+/* Top drag strip (borderless window needs an explicit drag region). */
+#chrome {
+  flex: 0 0 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 100%;
-  border-radius: 10px;
-  background: rgba(20, 24, 31, 0.92);
-  border: 1px solid #2a3038;
-  font-size: 22px;
-  letter-spacing: 0.04em;
+  background: rgba(20, 24, 31, 0.96);
+  border-bottom: 1px solid #2a3038;
+  cursor: grab;
   user-select: none;
+}
+#chrome:active {
+  cursor: grabbing;
+}
+.drag-hint {
+  color: #58617a;
+  font-size: 13px;
+  letter-spacing: 3px;
+}
+
+/* Web viewer fills the rest of the overlay. */
+#content {
+  flex: 1 1 auto;
+  width: 100%;
+  border: 0;
+  background: #0e1218;
 }
