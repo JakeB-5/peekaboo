@@ -3,7 +3,9 @@
 // Responsibility boundary (architecture.html §①): the Rust core owns all
 // window properties, the global shortcut, cursor polling and the reveal state
 // machine. The frontend only renders content and *reflects* state it receives
-// via events. Phase 0 just boots; event wiring is added in later phases.
+// via events.
+
+import { listen } from "@tauri-apps/api/event";
 
 // Default URL loaded into the viewer. Becomes a persisted setting in Phase 4.
 const DEFAULT_URL = "https://example.com";
@@ -20,5 +22,13 @@ if (viewer) {
 if (content instanceof HTMLIFrameElement) {
   content.src = DEFAULT_URL;
 }
+
+// Reflect the reveal state machine (owned by the Rust core) onto the viewer.
+// Payload is a plain string: "ghost" | "revealed" | "hidden".
+void listen<string>("reveal-state-changed", (event) => {
+  if (viewer) {
+    viewer.dataset.state = event.payload;
+  }
+});
 
 console.info("[peekaboo] frontend booted");

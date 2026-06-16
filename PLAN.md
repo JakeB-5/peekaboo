@@ -73,20 +73,21 @@
 **목표** 평소 고스트(클릭 통과) ↔ 핫존 호버 시 노출. 상태 머신은 Rust 단일 소스.
 
 **산출물**
-- [ ] 클릭 통과 토글 `set_ignore_cursor_events(bool)`
-- [ ] 커서 폴링 루프(`cursor_position`, ~40ms, 엣지 트리거)로 핫존 히트테스트
-- [ ] 핫존 rect 계산(`outer_position` + `inner_size` + `scale_factor`)
-- [ ] 노출/패닉 상태 머신(Hidden·Ghost·Revealed·Focused) — Rust 보유
-- [ ] `reveal-state-changed` 이벤트 emit → 프론트 opacity 동기화(ghost/revealed 분리)
-- [ ] 평소/호버 투명도 분리(CSS, `.12s` 트랜지션)
+- [x] 클릭 통과 토글 `set_ignore_cursor_events(bool)` (Ghost=true / Revealed=false)
+- [x] 커서 폴링 루프(`cursor_position`, 40ms, 엣지 트리거)로 핫존 히트테스트
+- [x] 핫존 rect 계산(`outer_position` + `inner_size`; 기본 핫존=창 전체, 물리좌표 일치로 scale 불필요 — 서브핫존은 P4)
+- [x] 노출 상태 머신(Ghost↔Revealed; Hidden은 패닉, Focused는 P3) — Rust 폴링 스레드 보유, 숨김 중 hover 전이 중단
+- [x] `reveal-state-changed` 이벤트 emit → 프론트 `data-state` opacity 동기화
+- [x] 평소/호버 투명도 분리(CSS, `.12s` 트랜지션)
 
 **자동 검증**
-- [ ] `cargo build` / `clippy` / `tsc` / eslint 통과
-- [ ] 폴링 루프 종료·thread 안전성 코드 리뷰(엣지 트리거로 토글 최소화)
+- [x] `cargo build` / `clippy`(무경고) / `tsc` / eslint 통과 — `cursor_position`·`set_ignore_cursor_events`·`outer_position`·`inner_size`·`emit` API 검증됨
+- [x] 엣지 트리거(상태 변화 시에만 토글) + `is_visible` 게이트로 폴링 비용·thread 안전성 확보
+- [x] **런타임 스모크**: `tauri dev`로 앱 기동 + hover 루프 ~6초 가동, 스레드 패닉 없음
 
-**수동 검증 (사용자 — 위협 시나리오)**
-- [ ] **클릭 통과**: 핫존 밖에서 아래 앱 클릭이 통과됨
-- [ ] **호버 노출**: 핫존 진입 시 또렷↔이탈 시 고스트 전환
+**수동 검증 (사용자 — 위협 시나리오)** *(헤드리스 확인 불가 — 커서 이동·육안 필요)*
+- [ ] **클릭 통과**: 오버레이 밖(고스트)에서 아래 앱 클릭이 통과됨
+- [ ] **호버 노출**: 오버레이 위로 커서 진입 시 또렷↔이탈 시 고스트 전환
 - [ ] 폴링 CPU 사용이 수용 범위(체감)
 
 ---
@@ -138,3 +139,4 @@
 - (작성 시작) Phase 0 착수 전 — 계획 수립 및 Rust 툴체인 설치 완료.
 - **Phase 0 완료** — 스캐폴딩 전체 작성, 자동 검증 5종 통과(npm/tsc/eslint/vite/cargo build). 아키텍처 결정: 메인 창 = 우리 프론트엔드(`src/`), 원격 콘텐츠는 컨테이너(iframe)로 로드해 opacity 제어. 기본 상태 = 고스트(`visible:true`).
 - **Phase 1 완료** — 패닉 전역 단축키(`⌘⇧H`, Rust 핸들러 직접 토글), iframe 뷰어, 드래그 핸들. 자동 검증 + `tauri dev` 런타임 스모크(앱 기동·무패닉) 통과. 수동 검증(전역 입력 즉시 탈출/복귀)은 사용자 머신 필요.
+- **Phase 2 완료** — Hover-Reveal: 커서 폴링 스레드(40ms, 엣지 트리거) + 클릭통과 토글 + Ghost↔Revealed 상태 머신(Rust) + `reveal-state-changed` 이벤트→프론트 opacity. 자동 검증 + hover 루프 런타임 스모크(무패닉) 통과. 수동(클릭통과·호버전환)은 사용자 머신 필요.
