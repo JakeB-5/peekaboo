@@ -128,7 +128,7 @@
 **자동 검증**
 - [x] `cargo build` / `clippy --all-targets`(무경고) / `tsc` / eslint 통과
 - [x] Rust 단위 테스트 4종(serde 라운드트립·부분로드·기본핫존·위치 라운드트립)
-- [~] `npm run tauri build`로 `.app`/`.dmg` 산출 — 백그라운드 실행 후 결과 기록(아래 진행 로그)
+- [x] `npm run tauri build` → `Peekaboo.app` + `Peekaboo_0.1.0_aarch64.dmg` 산출(릴리스 컴파일 37.55s, exit 0)
 
 **수동 검증 (사용자)** *(헤드리스 확인 불가)*
 - [ ] 창을 옮기고 재실행 시 설정·북마크·마지막 위치 복원
@@ -145,4 +145,22 @@
 - **Phase 3 완료** — 은폐 강화: Accessory(Dock·Cmd-Tab 숨김)·Spaces 전역·content protection(macOS 15+ 무효 주석)·온디맨드 포커스(드래그 스트립 클릭). 자동 검증 + 런타임 스모크(정책 적용 후 무패닉) 통과. 수동(은폐 육안·화면공유 실측)은 사용자 머신 필요.
 - **Phase 4a 완료** — 영속화 코어: `Settings`(단일 소스, `Arc<Mutex<>>` managed) + `serde_json`/`fs` 영속화(config dir, 외부 store 플러그인 불요) + 커맨드 `get_settings`/`save_settings`(동적 핫존·동적 패닉 단축키 재등록 포함). 핫존을 fraction으로 일반화. 프론트는 부팅 시 `get_settings`로 opacity CSS 변수·URL 적용. 자동 검증 + Rust 단위 테스트 3종(serde 라운드트립·부분로드·기본핫존) + 런타임 스모크 통과.
 - **Phase 4b 완료** — 설정 UI: 미니 툴바(☰ 설정·★ 북마크·✕ 패닉) + 설정 패널(URL·북마크 칩·평소/호버 투명도 슬라이더·창 크기·핫존 3×3·패닉 단축키 키캡처·항상위/Spaces/화면공유 토글). 모든 변경은 `save_settings`로 영속·적용. id 교차검증(22/22 일치) + tsc/eslint + 런타임 스모크 통과.
-- **Phase 4c 완료** — 마지막 위치 복원(물리좌표 `x/y`, `Moved` 추적 + 숨김/CloseRequested 영속화 + 시작 시 `set_position`) + 빌드/배포 문서(`BUILD.md`). 단위 테스트 4종 + clippy/build + 런타임 스모크 통과. 프로덕션 번들 빌드는 별도 실행 후 기록.
+- **Phase 4c 완료** — 마지막 위치 복원(물리좌표 `x/y`, `Moved` 추적 + 숨김/CloseRequested 영속화 + 시작 시 `set_position`) + 빌드/배포 문서(`BUILD.md`). 단위 테스트 4종 + clippy/build + 런타임 스모크 통과.
+- **프로덕션 번들 검증** — `npm run tauri build` 성공: 릴리스 컴파일 37.55s, `Peekaboo.app` + `Peekaboo_0.1.0_aarch64.dmg` 산출(exit 0).
+
+## 완료 요약
+
+전 단계(Phase 0 → 4c) 구현·커밋 완료. 자동 검증 게이트는 모두 통과했다:
+- 빌드: `cargo build`(dev/release) · `npm run build`(tsc+vite) · `npm run tauri build`(.app/.dmg)
+- 린트: `cargo clippy --all-targets`(무경고) · `eslint`(클린) · `tsc --noEmit`
+- 테스트: Rust 단위 4종 + 각 단계 `tauri dev` 런타임 스모크(무패닉 기동)
+
+**사용자 머신에서만 가능한 수동 검증(헤드리스 불가)** — 실제 위협 시나리오로 확인 필요:
+1. 투명·무테 창이 배경 비침으로 뜨는지(P0/P1)
+2. 다른 앱 포커스 상태에서 패닉 키(`⌘⇧H`) 즉시 숨김/복귀(P1)
+3. 오버레이 밖 클릭 통과 · 오버레이 위 호버 시 노출 전환(P2)
+4. Dock·Cmd-Tab·메뉴바 미노출 · 드래그 스트립 클릭으로 포커스(P3)
+5. 화면 공유 시 노출 여부 실측·기록(macOS 26은 노출 예상 — 확정 한계)(P3)
+6. 창 이동 후 재실행 시 설정·북마크·위치 복원 · `.app` 정상 실행(P4)
+
+검증 절차는 `BUILD.md` 참조.
