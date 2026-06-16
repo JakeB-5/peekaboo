@@ -7,22 +7,87 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <!--
-      The overlay window content. `#viewer` opacity is driven by the
-      reveal state machine (ghost / revealed / hidden) owned by the Rust core.
-      Remote web content is loaded into the viewer in Phase 1 (iframe), so the
-      transparent window + CSS-opacity model stays under our control.
-    -->
     <main id="viewer" data-state="ghost">
-      <!-- Borderless window: this top strip is the drag handle. In Phase 2 it
-           becomes the hover hotzone; in Phase 4 it hosts the mini-toolbar. -->
-      <div id="chrome" data-tauri-drag-region>
-        <span class="drag-hint" aria-hidden="true">⠿</span>
+      <!-- Borderless window: the center strip is the drag handle; the side
+           toolbars hold the mini-controls (screen-design §③). -->
+      <div id="chrome">
+        <div class="toolbar">
+          <button id="btn-settings" type="button" title="설정">☰</button>
+          <button id="btn-bookmark" type="button" title="현재 페이지 북마크">★</button>
+        </div>
+        <span class="drag-hint" data-tauri-drag-region aria-hidden="true">⠿⠿⠿</span>
+        <div class="toolbar">
+          <button id="btn-panic" type="button" title="숨기기 (패닉)">✕</button>
+        </div>
       </div>
+
       <!-- Remote content is framed so we keep control of opacity/reveal.
            Some sites block framing (X-Frame-Options / CSP) — known limitation
            (feature-spec risk #3). -->
       <iframe id="content" referrerpolicy="no-referrer" title="Peekaboo viewer"></iframe>
+
+      <!-- Settings panel (screen-design §④). Hidden until the ☰ button. -->
+      <section id="settings" hidden>
+        <header class="s-head">
+          <span>Peekaboo · 설정</span>
+          <button id="btn-close" type="button" title="닫기">✕</button>
+        </header>
+        <div class="s-body">
+          <div class="s-sect">콘텐츠</div>
+          <label class="s-field">
+            <span>URL</span>
+            <input id="f-url" type="text" spellcheck="false"
+                   placeholder="https://example.com/article" />
+          </label>
+          <div class="s-field">
+            <span>북마크</span>
+            <div id="bookmarks" class="chips"></div>
+          </div>
+
+          <div class="s-sect">표시</div>
+          <label class="s-field">
+            <span>평소 투명도</span>
+            <input id="f-ghost" type="range" min="0" max="100" step="1" />
+            <output id="o-ghost"></output>
+          </label>
+          <label class="s-field">
+            <span>호버 투명도</span>
+            <input id="f-revealed" type="range" min="0" max="100" step="1" />
+            <output id="o-revealed"></output>
+          </label>
+          <div class="s-field">
+            <span>창 크기</span>
+            <input id="f-width" class="num" type="number" min="120" step="10" />
+            <em class="x">×</em>
+            <input id="f-height" class="num" type="number" min="120" step="10" />
+          </div>
+          <div class="s-field">
+            <span>핫존</span>
+            <div id="hotzone-grid" class="hz" role="group" aria-label="핫존 위치"></div>
+            <button id="hz-full" type="button" class="mini">전체</button>
+          </div>
+
+          <div class="s-sect">탈출 · 은폐</div>
+          <label class="s-field">
+            <span>패닉 단축키</span>
+            <input id="f-shortcut" type="text" readonly placeholder="클릭 후 키 조합 입력" />
+          </label>
+          <label class="s-field toggle">
+            <span>항상 위</span><input id="f-aot" type="checkbox" />
+          </label>
+          <label class="s-field toggle">
+            <span>모든 Spaces</span><input id="f-spaces" type="checkbox" />
+          </label>
+          <label class="s-field toggle">
+            <span>화면공유 비노출</span><input id="f-cp" type="checkbox" />
+            <em class="tag">best-effort</em>
+          </label>
+          <label class="s-field toggle">
+            <span>Dock 숨김</span><input type="checkbox" checked disabled />
+            <em class="tag">Accessory</em>
+          </label>
+        </div>
+      </section>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>
