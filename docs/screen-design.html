@@ -77,7 +77,7 @@
 <div class="wrap">
 <nav class="side">
   <div class="brand"><span class="mk">◆</span> Peekaboo 기획</div>
-  <div class="sub">Stealth Webtoon Overlay · Tauri v2 · macOS · 2026-06</div>
+  <div class="sub">Stealth Browser Overlay · Tauri v2 · macOS · 2026-06</div>
   <div class="navgrp">문서</div>
   <a href="index.html">개요 · 인덱스</a>
   <a href="feature-spec.html">1 · 기능 명세</a>
@@ -95,7 +95,7 @@
 </nav>
 <main>
 
-<!-- 재사용 SVG 심볼: 웹툰 스트립 · 워크시트 배경 · 커서 -->
+<!-- 재사용 SVG 심볼: 웹 페이지 · 배경 앱 · 커서 -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="sd-toon" viewBox="0 0 100 170">
     <rect x="0" y="0" width="100" height="56" fill="#222a38"/>
@@ -191,7 +191,7 @@
     <!-- ① 평소: 고스트 -->
     <div>
       <div class="sd-screen">
-        <div class="sd-menubar"><span class="traffic"><i style="background:#f0708a"></i><i style="background:#f0b450"></i><i style="background:#5fd07a"></i></span><span>Numbers — Q3_재무.xlsx</span></div>
+        <div class="sd-menubar"><span class="traffic"><i style="background:#f0708a"></i><i style="background:#f0b450"></i><i style="background:#5fd07a"></i></span><span>Spreadsheet — sheet1.csv</span></div>
         <div class="sd-work"><svg viewBox="0 0 320 240" preserveAspectRatio="xMidYMid slice"><use href="#sd-sheet"/></svg></div>
         <div class="sd-overlay ghost"><svg viewBox="0 0 100 170"><use href="#sd-toon"/></svg></div>
       </div>
@@ -200,7 +200,7 @@
     <!-- ② 호버: 노출 -->
     <div>
       <div class="sd-screen">
-        <div class="sd-menubar"><span class="traffic"><i style="background:#f0708a"></i><i style="background:#f0b450"></i><i style="background:#5fd07a"></i></span><span>Numbers — Q3_재무.xlsx</span></div>
+        <div class="sd-menubar"><span class="traffic"><i style="background:#f0708a"></i><i style="background:#f0b450"></i><i style="background:#5fd07a"></i></span><span>Spreadsheet — sheet1.csv</span></div>
         <div class="sd-work"><svg viewBox="0 0 320 240" preserveAspectRatio="xMidYMid slice"><use href="#sd-sheet"/></svg></div>
         <div class="sd-overlay revealed">
           <div class="sd-hotzone"></div>
@@ -213,14 +213,14 @@
     <!-- ③ 패닉: 숨김 -->
     <div>
       <div class="sd-screen">
-        <div class="sd-menubar"><span class="traffic"><i style="background:#f0708a"></i><i style="background:#f0b450"></i><i style="background:#5fd07a"></i></span><span>Numbers — Q3_재무.xlsx</span></div>
+        <div class="sd-menubar"><span class="traffic"><i style="background:#f0708a"></i><i style="background:#f0b450"></i><i style="background:#5fd07a"></i></span><span>Spreadsheet — sheet1.csv</span></div>
         <div class="sd-work"><svg viewBox="0 0 320 240" preserveAspectRatio="xMidYMid slice"><use href="#sd-sheet"/></svg></div>
         <div class="sd-hint">패닉 — <kbd>⌘ ⇧ H</kbd> 한 번에 소멸</div>
       </div>
       <div class="sd-cap"><b>③ 패닉 — 소멸</b><br>업무 화면만 남는다. 잔상 없음</div>
     </div>
   </div>
-  <figcaption>왼쪽부터 평소(고스트)·호버(노출)·패닉(소멸). 핫존은 오버레이 상단의 점선 영역으로, 커서가 그 안에 있을 때만 노출된다(<a class="inl" href="architecture.html">상태 머신</a> Ghost↔Revealed). 웹툰 콘텐츠는 저작권 회피를 위해 추상 도형으로 표현했다.</figcaption>
+  <figcaption>왼쪽부터 평소(고스트)·호버(노출)·패닉(소멸). 핫존은 오버레이 상단의 점선 영역으로, 커서가 그 안에 있을 때만 노출된다(<a class="inl" href="architecture.html">상태 머신</a> Ghost↔Revealed). 콘텐츠는 예시로 추상 도형으로 표현했다.</figcaption>
 </figure>
 
 <!-- ============================================================ -->
@@ -228,7 +228,7 @@
 <p class="section-intro">오버레이 한 장의 구성 요소. 무테 창이라 드래그·리사이즈·조작을 위한 영역을 직접 설계해야 한다. 미니 툴바는 호버(노출) 상태에서만 나타난다.</p>
 
 <figure class="fig">
-  <svg viewBox="0 0 820 360" role="img" aria-label="Peekaboo 오버레이 창의 구성: 상단 핫존(호버 트리거)과 드래그 핸들, 가운데 웹툰 콘텐츠 영역, 호버 시 나타나는 미니 툴바(투명도·설정·북마크·닫기), 우하단 리사이즈 핸들에 각각 라벨이 연결된 해부도.">
+  <svg viewBox="0 0 820 360" role="img" aria-label="Peekaboo 오버레이 창의 구성: 상단 핫존(호버 트리거)과 드래그 핸들, 가운데 웹 콘텐츠 영역, 호버 시 나타나는 미니 툴바(투명도·설정·북마크·닫기), 우하단 리사이즈 핸들에 각각 라벨이 연결된 해부도.">
     <defs><marker id="ld" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#727a89"/></marker></defs>
 
     <!-- 오버레이 창 본체 (가운데) -->
@@ -243,7 +243,7 @@
       <rect x="366" y="51" width="20" height="18" rx="4" fill="#11141a" stroke="#2a3038"/><text x="376" y="64" font-size="9.5" text-anchor="middle" class="t-dim">★</text>
       <rect x="482" y="51" width="20" height="18" rx="4" fill="#11141a" stroke="#2a3038"/><text x="492" y="64" font-size="10" text-anchor="middle" fill="#f0708a">✕</text>
     </g>
-    <!-- 콘텐츠 영역: 웹툰 -->
+    <!-- 콘텐츠 영역: 웹 페이지 -->
     <svg x="312" y="88" width="196" height="200"><use href="#sd-toon"/></svg>
     <!-- 리사이즈 핸들 -->
     <path d="M505,305 L515,315 M498,310 L515,310 L515,293" fill="none" stroke="#727a89" stroke-width="1.6"/>
@@ -260,7 +260,7 @@
     <rect x="650" y="26" width="150" height="34" rx="6" fill="#1d212b" stroke="#353c47"/><text x="725" y="40" font-size="11" text-anchor="middle" class="t-ink">드래그 핸들</text><text x="725" y="53" font-size="9.5" text-anchor="middle" class="t-dim">data-tauri-drag-region</text>
     <!-- 콘텐츠 -->
     <line x1="520" y1="180" x2="650" y2="180" stroke="#727a89" stroke-width="1.2" marker-end="url(#ld)"/>
-    <rect x="650" y="164" width="150" height="34" rx="6" fill="#1d212b" stroke="#353c47"/><text x="725" y="178" font-size="11" text-anchor="middle" class="t-ink">콘텐츠 영역</text><text x="725" y="191" font-size="9.5" text-anchor="middle" class="t-dim">웹툰 WebView</text>
+    <rect x="650" y="164" width="150" height="34" rx="6" fill="#1d212b" stroke="#353c47"/><text x="725" y="178" font-size="11" text-anchor="middle" class="t-ink">콘텐츠 영역</text><text x="725" y="191" font-size="9.5" text-anchor="middle" class="t-dim">웹 페이지</text>
     <!-- 리사이즈 -->
     <line x1="515" y1="305" x2="650" y2="305" stroke="#727a89" stroke-width="1.2" marker-end="url(#ld)"/>
     <rect x="650" y="289" width="150" height="34" rx="6" fill="#1d212b" stroke="#353c47"/><text x="725" y="303" font-size="11" text-anchor="middle" class="t-ink">리사이즈 핸들</text><text x="725" y="316" font-size="9.5" text-anchor="middle" class="t-dim">set_size</text>
@@ -284,8 +284,8 @@
     <div class="sd-win-bar"><span class="traffic"><i style="background:#f0708a"></i><i style="background:#f0b450"></i><i style="background:#5fd07a"></i></span><span class="t">Peekaboo · 설정</span></div>
     <div class="sd-win-body">
       <div class="sd-sect">콘텐츠</div>
-      <div class="sd-field"><label>URL</label><span class="sd-input">https://comic.example/ep/142</span></div>
-      <div class="sd-field"><label>북마크</label><span class="sd-chips"><span class="sd-chip">전지적 독자</span><span class="sd-chip">화산귀환</span><span class="sd-chip">+ 추가</span></span></div>
+      <div class="sd-field"><label>URL</label><span class="sd-input">https://example.com/article</span></div>
+      <div class="sd-field"><label>북마크</label><span class="sd-chips"><span class="sd-chip">사이트 A</span><span class="sd-chip">사이트 B</span><span class="sd-chip">+ 추가</span></span></div>
 
       <div class="sd-sect">표시</div>
       <div class="sd-field"><label>평소 투명도</label><span class="sd-slider"><span class="fill" style="width:8%"></span><span class="knob" style="left:8%"></span></span><span class="sd-out">8%</span></div>

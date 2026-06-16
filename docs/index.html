@@ -10,7 +10,7 @@
 <div class="wrap">
 <nav class="side">
   <div class="brand"><span class="mk">◆</span> Peekaboo 기획</div>
-  <div class="sub">Stealth Webtoon Overlay · Tauri v2 · macOS · 2026-06</div>
+  <div class="sub">Stealth Browser Overlay · Tauri v2 · macOS · 2026-06</div>
   <div class="navgrp">문서</div>
   <a href="index.html" class="active">개요 · 인덱스</a>
   <a href="feature-spec.html">1 · 기능 명세</a>
@@ -29,12 +29,12 @@
 <main>
 
 <header class="hero">
-  <div class="eyebrow">Peekaboo · Stealth Webtoon Overlay · 기획 문서 세트</div>
+  <div class="eyebrow">Peekaboo · Stealth Browser Overlay · 기획 문서 세트</div>
   <h1>Peekaboo — 개요 · 인덱스</h1>
   <p class="lead">
-    <b>Peekaboo</b>는 회사에서 웹툰을 몰래 보기 위한 macOS 데스크톱 오버레이 앱이다.
+    <b>Peekaboo</b>는 눈에 띄지 않게 웹을 보기 위한 macOS 데스크톱 스텔스 브라우저 오버레이 앱이다.
     제품의 본질은 한 줄로 압축된다 — <b>"보고 싶을 때만 보이고, 위험할 때 즉시 사라진다."</b>
-    임의의 웹툰 페이지를 원하는 크기·투명도의 떠 있는 창으로 띄우되, 평소엔 거의 드러나지 않다가
+    임의의 웹 페이지를 원하는 크기·투명도의 떠 있는 창으로 띄우되, 평소엔 거의 드러나지 않다가
     지정 영역에 마우스를 올릴 때만 또렷해지고(hover-reveal), 들킬 위기엔 전역 단축키 한 번으로 사라진다
     (화면 공유 비노출은 best-effort — 최신 macOS에선 한계). 본 인덱스는 5개 상세 문서의 허브로서 비전·핵심 결정·지표·진입점을 한 화면에 모은다.
   </p>
@@ -48,13 +48,13 @@
 
 <h2 id="vision"><span class="num">①</span> 한 줄 비전 · 배경</h2>
 <p>
-  <strong>비전:</strong> "근무 중 누구에게도 들키지 않고, 보고 싶을 때 즉시 띄워 한 컷 보고, 인기척이 느껴지면
-  단축키 한 번에 흔적 없이 사라지는 웹툰 뷰어." 일반 브라우저로 웹툰을 보는 것과의 차이는 전부
+  <strong>비전:</strong> "누구에게도 들키지 않고, 보고 싶을 때 즉시 띄워 잠깐 보고, 인기척이 느껴지면
+  단축키 한 번에 흔적 없이 사라지는 웹 뷰어." 일반 브라우저로 보는 것과의 차이는 전부
   <em>은닉성</em>에 있다 — 평소 노출 최소화, 위기 시 즉시 탈출, 화면 공유 비노출(best-effort), 앱 존재 자체의 은폐.
 </p>
 <p>
-  <strong>배경:</strong> 사무실 환경에는 "들킬 경로"가 여럿이다. ⑴ 화면 공유·녹화 중 화면에 떠 있던 창이 그대로 송출되고,
-  ⑵ 상사·동료가 등 뒤로 다가오며, ⑶ 평소 화면에 콘텐츠가 빤히 떠 있고, ⑷ Dock·Cmd-Tab·앱 스위처에 앱 흔적이 남는다.
+  <strong>배경:</strong> 노출된 환경에는 "들킬 경로"가 여럿이다. ⑴ 화면 공유·녹화 중 화면에 떠 있던 창이 그대로 송출되고,
+  ⑵ 누군가 등 뒤로 다가오며, ⑶ 평소 화면에 콘텐츠가 빤히 떠 있고, ⑷ Dock·Cmd-Tab·앱 스위처에 앱 흔적이 남는다.
   Peekaboo는 이 네 경로 각각에 대응하는 방어 기제를 OS 레벨(Tauri/Rust)에서 구현하는 것을 목표로 한다.
   난이도는 UI가 아니라 <b>macOS 창 동작 제어</b>에 있다.
 </p>
@@ -66,7 +66,7 @@
     </div>
     <div>
       <h4>왜</h4>
-      <p class="muted small">일반 브라우저로는 불가능한 "안 들키는" 시청 — 노출 최소화·즉시 탈출·흔적 은폐.</p>
+      <p class="muted small">일반 브라우저로는 불가능한 "안 들키는" 사용 — 노출 최소화·즉시 탈출·흔적 은폐.</p>
     </div>
     <div>
       <h4>어떻게</h4>
@@ -80,7 +80,7 @@
 
 <figure class="fig">
   <div class="fig-title">위협 → 방어 매핑</div>
-  <svg viewBox="0 0 920 300" role="img" aria-label="사무실에서 웹툰 시청이 들킬 수 있는 네 가지 경로(화면 공유·등 뒤 접근·평소 노출·Dock 흔적)와, 각각에 1:1 대응하는 Peekaboo의 네 방어 기제(Content Protection·패닉 단축키·투명도+Hover-Reveal·Accessory 정책)를 잇는 매핑 다이어그램.">
+  <svg viewBox="0 0 920 300" role="img" aria-label="노출된 환경에서 화면이 들킬 수 있는 네 가지 경로(화면 공유·등 뒤 접근·평소 노출·Dock 흔적)와, 각각에 1:1 대응하는 Peekaboo의 네 방어 기제(Content Protection·패닉 단축키·투명도+Hover-Reveal·Accessory 정책)를 잇는 매핑 다이어그램.">
     <defs>
       <marker id="arwT" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto">
         <path d="M0,0 L7,3 L0,6 Z" fill="#727a89"/>
@@ -96,7 +96,7 @@
     <text x="165" y="86" font-size="10.5" text-anchor="middle" fill="#727a89">Zoom · Meet · 화면 캡처</text>
 
     <rect x="40" y="108" width="250" height="48" rx="8" fill="#1d212b" stroke="#f0708a" stroke-width="1.5"/>
-    <text x="165" y="129" class="t-ink" font-size="12.5" text-anchor="middle">상사 · 동료가 등 뒤로</text>
+    <text x="165" y="129" class="t-ink" font-size="12.5" text-anchor="middle">누군가 등 뒤로</text>
     <text x="165" y="146" font-size="10.5" text-anchor="middle" fill="#727a89">긴급 — 1초 안에 숨겨야</text>
 
     <rect x="40" y="168" width="250" height="48" rx="8" fill="#1d212b" stroke="#f0708a" stroke-width="1.5"/>
@@ -215,7 +215,7 @@
 <div class="timeline">
   <div class="phase p-now">
     <div class="ph"><h3>Phase 0–1 · 스캐폴딩 + MVP</h3><span class="when">지금</span></div>
-    <p>Tauri v2 프로젝트 생성 → 투명·항상-위·무테 오버레이 창에 웹툰 URL 로드 → <b>패닉 글로벌 단축키</b>로 즉시 show/hide.
+    <p>Tauri v2 프로젝트 생성 → 투명·항상-위·무테 오버레이 창에 웹 URL 로드 → <b>패닉 글로벌 단축키</b>로 즉시 show/hide.
        "띄우고 / 즉시 숨긴다" 수직 경로부터 동작시킨다.</p>
   </div>
   <div class="phase p-next">

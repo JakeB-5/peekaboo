@@ -10,7 +10,7 @@
 <div class="wrap">
 <nav class="side">
   <div class="brand"><span class="mk">◆</span> Peekaboo 기획</div>
-  <div class="sub">Stealth Webtoon Overlay · Tauri v2 · macOS · 2026-06</div>
+  <div class="sub">Stealth Browser Overlay · Tauri v2 · macOS · 2026-06</div>
   <div class="navgrp">문서</div>
   <a href="index.html">개요 · 인덱스</a>
   <a href="feature-spec.html" class="active">1 · 기능 명세</a>
@@ -63,7 +63,7 @@
   </thead>
   <tbody>
     <tr><td class="num">②</td><td><a href="#overlay">투명 오버레이 창</a></td><td><span class="badge b-l">MVP</span></td><td class="c"><span class="partial">△</span></td><td><code>transparent</code>·<code>decorations:false</code>·<code>alwaysOnTop</code> + <code>macOSPrivateApi</code></td><td><small>투명은 <code>macos-private-api</code> feature 필요(App Store 부적격)</small></td></tr>
-    <tr><td class="num">②</td><td><a href="#overlay">웹툰 뷰어 로드</a></td><td><span class="badge b-l">MVP</span></td><td class="c"><span class="no">—</span></td><td>WebView URL 내비게이션 + 북마크</td><td><small>로그인/임베드 차단 사이트는 별도 처리</small></td></tr>
+    <tr><td class="num">②</td><td><a href="#overlay">웹 뷰어 로드</a></td><td><span class="badge b-l">MVP</span></td><td class="c"><span class="no">—</span></td><td>WebView URL 내비게이션 + 북마크</td><td><small>로그인/임베드 차단 사이트는 별도 처리</small></td></tr>
     <tr><td class="num">③</td><td><a href="#panic">패닉 탈출(글로벌 단축키)</a></td><td><span class="badge b-l">MVP</span></td><td class="c"><span class="yes">★</span></td><td><code>global-shortcut</code> + <code>hide()</code>/<code>show()</code></td><td><small>권한 불필요(일반 조합). 미디어키 금지</small></td></tr>
     <tr><td class="num">④</td><td><a href="#reveal">투명도 조절</a></td><td><span class="badge b-l">MVP</span></td><td class="c"><span class="partial">△</span></td><td>투명창 위 CSS alpha</td><td><small>창 alpha 직접 API 미확정 — CSS로 처리</small></td></tr>
     <tr><td class="num">④</td><td><a href="#reveal">Hover-Reveal(클릭통과)</a></td><td><span class="badge b-p">v1</span></td><td class="c"><span class="yes">★</span></td><td><code>set_ignore_cursor_events</code> + <code>cursor_position</code> 폴링</td><td><small>DOM/네이티브 hover는 클릭통과 시 죽음 → 폴링 필수</small></td></tr>
@@ -82,7 +82,7 @@
 
 <!-- ============================================================ -->
 <h2 id="overlay"><span class="num">②</span>투명 오버레이 창 · 뷰어</h2>
-<p class="section-intro">웹툰 페이지를 원하는 크기·위치의 떠 있는 투명 창으로 띄우는, 모든 기능의 토대. 무테(無테)·그림자 없음·항상 위·작업표시줄 비표시로 "창처럼 보이지 않는 창"을 만든다.</p>
+<p class="section-intro">웹 페이지를 원하는 크기·위치의 떠 있는 투명 창으로 띄우는, 모든 기능의 토대. 무테(無테)·그림자 없음·항상 위·작업표시줄 비표시로 "창처럼 보이지 않는 창"을 만든다.</p>
 
 <div class="cards two">
   <div class="item s-progress">
@@ -100,9 +100,9 @@
     <p><small><b>비고</b> 핫존(호버 감지 영역)과 드래그 영역의 좌표 정의를 일관되게 관리(④와 연동)</small></p>
   </div>
   <div class="item s-progress">
-    <div class="top"><h3>웹툰 뷰어 로드</h3><span class="badge b-l">MVP</span></div>
+    <div class="top"><h3>웹 뷰어 로드</h3><span class="badge b-l">MVP</span></div>
     <div class="meta"><span><b>입력</b> URL</span><span><b>저장</b> 북마크</span></div>
-    <p class="desc">임의의 웹툰 URL을 창에 로드한다. 자주 보는 작품을 북마크로 저장하고 빠르게 전환한다.</p>
+    <p class="desc">임의의 웹 URL을 창에 로드한다. 자주 보는 페이지를 북마크로 저장하고 빠르게 전환한다.</p>
     <p><small><b>API</b> 창 설정 <code>url</code>(원격 URL 허용) 또는 런타임 내비게이션. 북마크는 ⑥ 영속화에 저장</small></p>
     <p><small><b>한계</b> 일부 사이트는 로그인·임베드 차단 가능 — 메인 윈도우 내비게이션으로 회피하되 사이트별 검증 필요(격차)</small></p>
   </div>
@@ -117,7 +117,7 @@
 
 <!-- ============================================================ -->
 <h2 id="panic"><span class="num">③</span>패닉 탈출 <span class="badge b-teal" style="vertical-align:middle">스텔스 핵심</span></h2>
-<p class="section-intro">제품의 심장. 들킬 위기에 <b>전역 단축키 한 번으로 창이 즉시 사라진다</b> — 다른 앱이 포커스를 가진 상태(웹툰 창은 뒤에 있음)에서도 반드시 동작해야 한다. "기능"이 아니라 "반사신경"으로 느껴져야 한다.</p>
+<p class="section-intro">제품의 심장. 들킬 위기에 <b>전역 단축키 한 번으로 창이 즉시 사라진다</b> — 다른 앱이 포커스를 가진 상태(오버레이 창은 뒤에 있음)에서도 반드시 동작해야 한다. "기능"이 아니라 "반사신경"으로 느껴져야 한다.</p>
 
 <figure class="fig">
   <div class="fig-title">패닉 단축키 경로</div>
@@ -270,7 +270,7 @@
       <li><b>투명도</b> — 평소 불투명도 / 호버 시 불투명도</li>
       <li><b>핫존</b> — 호버 감지 영역(위치·크기), 다중 가능(v2)</li>
       <li><b>단축키</b> — 패닉 토글 키, 표시/숨김 키 매핑</li>
-      <li><b>뷰어</b> — 북마크(작품 URL) 목록</li>
+      <li><b>뷰어</b> — 북마크(페이지 URL) 목록</li>
     </ul>
   </div>
   <div class="panel">

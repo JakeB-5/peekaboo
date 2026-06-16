@@ -10,7 +10,7 @@
 <div class="wrap">
 <nav class="side">
   <div class="brand"><span class="mk">◆</span> Peekaboo 기획</div>
-  <div class="sub">Stealth Webtoon Overlay · Tauri v2 · macOS · 2026-06</div>
+  <div class="sub">Stealth Browser Overlay · Tauri v2 · macOS · 2026-06</div>
   <div class="navgrp">문서</div>
   <a href="index.html">개요 · 인덱스</a>
   <a href="feature-spec.html">1 · 기능 명세</a>
@@ -58,7 +58,7 @@
     <rect x="30" y="50" width="250" height="190" rx="10" fill="#171a21" stroke="#5fd07a" stroke-width="1.5"/>
     <text x="155" y="74" class="t-ink" font-size="13" text-anchor="middle">WebView 프론트엔드</text>
     <text x="155" y="91" font-size="10.5" text-anchor="middle" fill="#727a89">TS + Vite · 표현 담당</text>
-    <rect x="50" y="104" width="210" height="28" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="155" y="123" font-size="11" text-anchor="middle" class="t-dim">웹툰 콘텐츠 렌더</text>
+    <rect x="50" y="104" width="210" height="28" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="155" y="123" font-size="11" text-anchor="middle" class="t-dim">웹 콘텐츠 렌더</text>
     <rect x="50" y="138" width="210" height="28" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="155" y="157" font-size="11" text-anchor="middle" class="t-dim">투명도 CSS · 노출 애니메이션</text>
     <rect x="50" y="172" width="210" height="28" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="155" y="191" font-size="11" text-anchor="middle" class="t-dim">설정 패널 UI</text>
     <rect x="50" y="206" width="210" height="24" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="155" y="222" font-size="10.5" text-anchor="middle" fill="#727a89">상태 수신 → 표현만 동기화</text>
@@ -388,7 +388,7 @@
 
 <div class="callout good">
   <div class="ct">권고 동작</div>
-  <p>웹툰을 "보기"는 대부분 스크롤뿐이라 포커스가 늘 필요하진 않다. 따라서 <b>평소엔 Ghost(비활성·클릭통과), 핫존에서 Revealed</b>로 두고, 스크롤/클릭 등 입력이 실제로 필요할 때만 <code>set_focus()</code>로 잠깐 활성화하는 모델이 가장 단순하면서 충분하다. NSPanel 도입은 "활성 전환이 거슬린다"는 문제가 실측될 때 검토한다.</p>
+  <p>콘텐츠 "보기"는 대부분 스크롤뿐이라 포커스가 늘 필요하진 않다. 따라서 <b>평소엔 Ghost(비활성·클릭통과), 핫존에서 Revealed</b>로 두고, 스크롤/클릭 등 입력이 실제로 필요할 때만 <code>set_focus()</code>로 잠깐 활성화하는 모델이 가장 단순하면서 충분하다. NSPanel 도입은 "활성 전환이 거슬린다"는 문제가 실측될 때 검토한다.</p>
 </div>
 
 <div class="crosslinks">
