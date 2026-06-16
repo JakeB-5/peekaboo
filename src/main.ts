@@ -6,12 +6,14 @@
 // via events.
 
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 // Default URL loaded into the viewer. Becomes a persisted setting in Phase 4.
 const DEFAULT_URL = "https://example.com";
 
 const viewer = document.getElementById("viewer");
 const content = document.getElementById("content");
+const chrome = document.getElementById("chrome");
 
 if (viewer) {
   // Default state on launch is Ghost (screen-design control table:
@@ -30,5 +32,16 @@ void listen<string>("reveal-state-changed", (event) => {
     viewer.dataset.state = event.payload;
   }
 });
+
+// On-demand focus (architecture §⑥). The app runs as Accessory, so show()
+// alone doesn't grab focus, and we deliberately avoid stealing focus on mere
+// hover. Clicking the drag strip focuses the overlay so keyboard input works
+// only when the user actually wants it.
+if (chrome) {
+  const appWindow = getCurrentWindow();
+  chrome.addEventListener("pointerdown", () => {
+    void appWindow.setFocus();
+  });
+}
 
 console.info("[peekaboo] frontend booted");

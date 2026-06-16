@@ -9,10 +9,14 @@
 //! window between Ghost (faint, click-through) and Revealed (opaque, cursor
 //! events captured) — the only robust approach, since click-through suppresses
 //! every WebView/native mouse event.
+//!
+//! Phase 3 (concealment): hides the app from Dock / Cmd-Tab (Accessory policy),
+//! floats it across all Spaces, and requests content protection (best-effort —
+//! ineffective on macOS 15+). On-demand focus lives in the frontend.
 
 use std::{thread, time::Duration};
 
-use tauri::{Emitter, Manager, PhysicalPosition, WebviewWindow};
+use tauri::{ActivationPolicy, Emitter, Manager, PhysicalPosition, WebviewWindow};
 use tauri_plugin_global_shortcut::{
     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
@@ -124,8 +128,22 @@ pub fn run() {
             // `Invalid argument (os error 22)`.
             app.global_shortcut().register(panic)?;
 
-            // Start the cursor-polling reveal loop on the main window.
+            // Hide the app from the Dock / Cmd-Tab / menu bar. Must be set on
+            // `App` (not `AppHandle`) — see Tauri #9244.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(ActivationPolicy::Accessory);
+
             if let Some(win) = app.get_webview_window("main") {
+                // Float across all Spaces (architecture §③).
+                let _ = win.set_visible_on_all_workspaces(true);
+
+                // Best-effort screen-share exclusion. INEFFECTIVE on macOS 15+
+                // (ScreenCaptureKit ignores NSWindowSharingNone, Tauri #14200);
+                // the real defense is the panic shortcut. Kept as a secondary
+                // measure for older macOS and legacy capture paths.
+                let _ = win.set_content_protected(true);
+
+                // Start the cursor-polling reveal loop.
                 spawn_hover_loop(win);
             }
             Ok(())

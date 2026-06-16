@@ -97,19 +97,20 @@
 **목표** Dock·Cmd-Tab 은폐 + 온디맨드 포커스 + Spaces 전역 + content protection(한계 실측).
 
 **산출물**
-- [ ] `ActivationPolicy::Accessory`(Dock·Cmd-Tab·메뉴바 숨김) — `App`에서 호출
-- [ ] 입력 필요 시 `set_focus()` 온디맨드 활성화
-- [ ] `set_visible_on_all_workspaces(true)`(Spaces 전역)
-- [ ] `set_content_protected(true)` 적용 + 코드/문서에 macOS 15+ 무효 명시
+- [x] `ActivationPolicy::Accessory`(Dock·Cmd-Tab·메뉴바 숨김) — setup의 `&mut App`에서 호출(#9244 회피)
+- [x] 입력 필요 시 온디맨드 포커스 — 드래그 스트립 클릭 시 `getCurrentWindow().setFocus()`(hover마다 포커스 탈취 회피) + 패닉 복귀 시 `set_focus()`
+- [x] `set_visible_on_all_workspaces(true)`(Spaces 전역)
+- [x] `set_content_protected(true)` 적용 + 코드 주석에 macOS 15+ 무효(#14200) 명시
 
 **자동 검증**
-- [ ] `cargo build` / `clippy` / `tsc` / eslint 통과
-- [ ] activation policy가 `App`(AppHandle 아님) 시점에서 호출되는지 리뷰
+- [x] `cargo build` / `clippy`(무경고) / `tsc` / eslint 통과 — `set_activation_policy`·`ActivationPolicy::Accessory`·`set_visible_on_all_workspaces`·`set_content_protected` 검증됨
+- [x] activation policy를 setup의 `&mut App`에서 호출(`#[cfg(target_os="macos")]`) — 컴파일·런타임 검증
+- [x] **런타임 스모크**: Accessory+content-protect+spaces 적용 후 앱 기동·~6초 무패닉
 
-**수동 검증 (사용자 — 위협 시나리오)**
+**수동 검증 (사용자 — 위협 시나리오)** *(헤드리스 확인 불가 — 육안·화면공유 필요)*
 - [ ] **앱 은폐**: Dock·Cmd-Tab·메뉴바 어디에도 안 보임
-- [ ] 입력 필요 시 포커스가 잡힘(스크롤/클릭)
-- [ ] **화면공유(기록)**: Zoom/Meet/QuickTime 공유 시 창 노출 여부를 실측·기록(현 macOS는 노출 예상)
+- [ ] 입력 필요 시 포커스가 잡힘(드래그 스트립 클릭 → 키 입력 가능)
+- [ ] **화면공유(기록)**: Zoom/Meet/QuickTime 공유 시 창 노출 여부를 실측·기록(macOS 26은 노출 예상 — 확정 한계)
 
 ---
 
@@ -140,3 +141,4 @@
 - **Phase 0 완료** — 스캐폴딩 전체 작성, 자동 검증 5종 통과(npm/tsc/eslint/vite/cargo build). 아키텍처 결정: 메인 창 = 우리 프론트엔드(`src/`), 원격 콘텐츠는 컨테이너(iframe)로 로드해 opacity 제어. 기본 상태 = 고스트(`visible:true`).
 - **Phase 1 완료** — 패닉 전역 단축키(`⌘⇧H`, Rust 핸들러 직접 토글), iframe 뷰어, 드래그 핸들. 자동 검증 + `tauri dev` 런타임 스모크(앱 기동·무패닉) 통과. 수동 검증(전역 입력 즉시 탈출/복귀)은 사용자 머신 필요.
 - **Phase 2 완료** — Hover-Reveal: 커서 폴링 스레드(40ms, 엣지 트리거) + 클릭통과 토글 + Ghost↔Revealed 상태 머신(Rust) + `reveal-state-changed` 이벤트→프론트 opacity. 자동 검증 + hover 루프 런타임 스모크(무패닉) 통과. 수동(클릭통과·호버전환)은 사용자 머신 필요.
+- **Phase 3 완료** — 은폐 강화: Accessory(Dock·Cmd-Tab 숨김)·Spaces 전역·content protection(macOS 15+ 무효 주석)·온디맨드 포커스(드래그 스트립 클릭). 자동 검증 + 런타임 스모크(정책 적용 후 무패닉) 통과. 수동(은폐 육안·화면공유 실측)은 사용자 머신 필요.
