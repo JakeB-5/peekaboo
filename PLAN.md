@@ -25,22 +25,23 @@
 **목표** 빈 투명·무테 창이 떠서 `tauri dev`가 도는 상태.
 
 **산출물**
-- [ ] `package.json` / `tsconfig.json` / `vite.config.ts` (Vite root=src, port 1420)
-- [ ] `src/index.html` · `src/main.ts` · `src/styles.css`
-- [ ] `src-tauri/Cargo.toml` (`macos-private-api` feature, global-shortcut 플러그인)
-- [ ] `src-tauri/tauri.conf.json` (투명·무테·항상위·skipTaskbar·visible:false 등)
-- [ ] `src-tauri/build.rs` · `src-tauri/src/main.rs` · `src-tauri/src/lib.rs`
-- [ ] `src-tauri/capabilities/default.json` (window·global-shortcut 권한 선언)
-- [ ] `src-tauri/icons/` (플레이스홀더 아이콘)
+- [x] `package.json` / `tsconfig.json` / `vite.config.ts` (Vite root=src, port 1420) + `eslint.config.js`
+- [x] `src/index.html` · `src/main.ts` · `src/styles.css`
+- [x] `src-tauri/Cargo.toml` (`macos-private-api` feature, global-shortcut 플러그인)
+- [x] `src-tauri/tauri.conf.json` (투명·무테·항상위·skipTaskbar·`visible:true`=고스트 기본)
+- [x] `src-tauri/build.rs` · `src-tauri/src/main.rs` · `src-tauri/src/lib.rs`
+- [x] `src-tauri/capabilities/default.json` (window·global-shortcut 권한 선언)
+- [x] `src-tauri/icons/` (PIL로 생성한 아이콘 세트 — macOS만)
 
 **자동 검증**
-- [ ] `npm install` 성공
-- [ ] `npx tsc --noEmit` 에러 0
-- [ ] `cargo build --manifest-path src-tauri/Cargo.toml` 성공 (의존성·feature 해석)
-- [ ] `tauri.conf.json` 스키마 유효(빌드가 곧 검증)
+- [x] `npm install` 성공 (exit 0)
+- [x] `npx tsc --noEmit` 에러 0 (`npm run build`)
+- [x] `eslint .` 0 errors / 0 warnings
+- [x] `cargo build --manifest-path src-tauri/Cargo.toml` 성공 (exit 0, 40.6s) — 의존성·feature·capabilities 권한 식별자 검증됨
+- [x] `tauri.conf.json` 스키마 유효(빌드가 곧 검증)
 
 **수동 검증 (사용자)**
-- [ ] `npm run tauri dev` 실행 시 투명·무테 창이 뜨고 배경이 비침, 콘솔 에러 없음
+- [ ] `npm run tauri dev` 실행 시 투명·무테 창이 뜨고 배경이 비침, 콘솔 에러 없음 (헤드리스 환경 확인 불가 — 사용자 머신 필요)
 
 ---
 
@@ -134,3 +135,4 @@
 ## 진행 로그
 
 - (작성 시작) Phase 0 착수 전 — 계획 수립 및 Rust 툴체인 설치 완료.
+- **Phase 0 완료** — 스캐폴딩 전체 작성, 자동 검증 5종 통과(npm/tsc/eslint/vite/cargo build). 아키텍처 결정: 메인 창 = 우리 프론트엔드(`src/`), 원격 콘텐츠는 컨테이너(iframe)로 로드해 opacity 제어. 기본 상태 = 고스트(`visible:true`).

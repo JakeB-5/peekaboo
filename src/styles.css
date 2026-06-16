@@ -1,0 +1,56 @@
+/* Peekaboo overlay styles.
+   The native window is transparent (macOSPrivateApi); the page background
+   must stay transparent so the desktop shows through. Content visibility is
+   controlled by `#viewer` opacity, driven by the reveal state machine. */
+
+:root {
+  --ghost-opacity: 0.08; /* default "barely there" — overridden by settings later */
+  --revealed-opacity: 1;
+  --reveal-transition: 0.12s ease;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent; /* critical: never paint an opaque backdrop */
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Dark, low-chroma tone so the overlay doesn't stand out (screen-design §①). */
+  color: #cdd6e4;
+}
+
+#viewer {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  transition: opacity var(--reveal-transition);
+}
+
+/* Reveal state machine → CSS opacity (architecture.html §②). */
+#viewer[data-state="ghost"] {
+  opacity: var(--ghost-opacity);
+}
+#viewer[data-state="revealed"] {
+  opacity: var(--revealed-opacity);
+}
+#viewer[data-state="hidden"] {
+  opacity: 0;
+}
+
+/* Phase 0 placeholder — replaced by the web viewer in Phase 1. */
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  background: rgba(20, 24, 31, 0.92);
+  border: 1px solid #2a3038;
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  user-select: none;
+}

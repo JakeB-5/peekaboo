@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Peekaboo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <!--
+      The overlay window content. `#viewer` opacity is driven by the
+      reveal state machine (ghost / revealed / hidden) owned by the Rust core.
+      Remote web content is loaded into the viewer in Phase 1 (iframe), so the
+      transparent window + CSS-opacity model stays under our control.
+    -->
+    <main id="viewer" data-state="ghost">
+      <div class="placeholder" data-tauri-drag-region>Peekaboo</div>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
