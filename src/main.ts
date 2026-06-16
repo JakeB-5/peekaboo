@@ -77,6 +77,10 @@ let state: Settings = {
   spaces_global: true,
 };
 
+// Set true only after the initial get_settings succeeds. Until then save() is
+// suppressed so a failed load can't persist JS defaults over the user's prefs.
+let loaded = false;
+
 function pct(v: number): string {
   return `${Math.round(v * 100)}%`;
 }
@@ -87,17 +91,33 @@ function applyView(): void {
   root.style.setProperty("--revealed-opacity", String(state.revealed_opacity));
 }
 
-function loadUrl(url: string): void {
-  if (url) {
-    content.src = url;
+// Only ever navigate the viewer to http(s). A javascript:/data:/file: URL would
+// run in the iframe document context; we never hand arbitrary schemes to it.
+function isHttpUrl(url: string): boolean {
+  try {
+    const proto = new URL(url).protocol;
+    return proto === "http:" || proto === "https:";
+  } catch {
+    return false;
   }
 }
 
-async function save(): Promise<void> {
+function loadUrl(url: string): void {
+  content.src = isHttpUrl(url) ? url : "about:blank";
+}
+
+async function save(): Promise<boolean> {
+  // Never write back to the core before the initial load succeeded, or a failed
+  // get_settings would let the JS defaults clobber the user's persisted prefs.
+  if (!loaded) {
+    return false;
+  }
   try {
     await invoke("save_settings", { settings: state });
+    return true;
   } catch (err) {
     console.warn("[peekaboo] save_settings failed:", err);
+    return false;
   }
 }
 
@@ -111,7 +131,9 @@ function hostLabel(url: string): string {
 
 function addCurrentBookmark(): void {
   const url = state.url.trim();
-  if (url && !state.bookmarks.includes(url)) {
+  // Only persist http(s) bookmarks so a stored javascript:/data: URL can never
+  // be re-applied to the viewer on a later session.
+  if (isHttpUrl(url) && !state.bookmarks.includes(url)) {
     state.bookmarks = [...state.bookmarks, url];
     renderBookmarks();
     void save();
@@ -225,6 +247,20 @@ function keyToAccel(e: KeyboardEvent): string | null {
   return [...mods, key].join("+");
 }
 
+// Briefly show a message in the (readonly) shortcut field, then restore it to
+// the current bound accelerator. Gives feedback for rejected / invalid combos.
+let shortcutHintTimer: number | undefined;
+function flashShortcutHint(msg: string): void {
+  fShortcut.value = msg;
+  if (shortcutHintTimer !== undefined) {
+    clearTimeout(shortcutHintTimer);
+  }
+  shortcutHintTimer = setTimeout(() => {
+    fShortcut.value = state.panic_shortcut;
+    shortcutHintTimer = undefined;
+  }, 1400);
+}
+
 // ---- wiring ----
 need<HTMLButtonElement>("btn-settings").addEventListener("click", () => {
   panel.hidden = !panel.hidden;
@@ -285,11 +321,22 @@ fCp.addEventListener("change", () => {
 fShortcut.addEventListener("keydown", (e) => {
   e.preventDefault();
   const accel = keyToAccel(e);
-  if (accel) {
-    state.panic_shortcut = accel;
-    fShortcut.value = accel;
-    void save();
+  if (!accel) {
+    flashShortcutHint("수정자 + 키 조합이 필요합니다");
+    return;
   }
+  const previous = state.panic_shortcut;
+  state.panic_shortcut = accel;
+  fShortcut.value = accel;
+  void (async () => {
+    // If the backend rejects the accelerator (or persistence fails), revert so
+    // the field never claims a panic key that isn't actually registered.
+    if (!(await save())) {
+      state.panic_shortcut = previous;
+      fShortcut.value = previous;
+      flashShortcutHint("단축키를 등록할 수 없습니다");
+    }
+  })();
 });
 
 document.addEventListener("keydown", (e) => {
@@ -306,17 +353,22 @@ chrome.addEventListener("pointerdown", () => {
 });
 
 // ---- boot ----
+// Do NOT point the iframe at any remote host until settings resolve: loading
+// DEFAULT_URL eagerly would fire a request to a fixed third-party host on every
+// launch (trace leak) and flash the placeholder before the user's real page.
 viewer.dataset.state = "ghost";
-content.src = DEFAULT_URL;
 
 void (async () => {
   try {
     state = await invoke<Settings>("get_settings");
+    loaded = true;
     applyView();
-    loadUrl(state.url);
+    loadUrl(state.url || DEFAULT_URL);
     populateForm();
   } catch (err) {
     console.warn("[peekaboo] get_settings failed:", err);
+    // Stay blank rather than leaking a request to a remote default on failure.
+    content.src = "about:blank";
   }
 })();
 
