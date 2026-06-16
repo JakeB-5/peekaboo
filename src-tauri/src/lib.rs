@@ -50,6 +50,9 @@ struct Settings {
     content_protected: bool,
     always_on_top: bool,
     spaces_global: bool,
+    /// Last window position in physical pixels (restored on launch).
+    x: Option<i32>,
+    y: Option<i32>,
 }
 
 impl Default for Settings {
@@ -66,6 +69,8 @@ impl Default for Settings {
             content_protected: true,
             always_on_top: true,
             spaces_global: true,
+            x: None,
+            y: None,
         }
     }
 }
@@ -114,6 +119,13 @@ fn toggle_overlay(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         if win.is_visible().unwrap_or(false) {
             let _ = win.hide();
+            // Checkpoint on hide: the panic-hide is a natural, infrequent moment
+            // to persist the latest position/settings.
+            if let Some(state) = app.try_state::<SharedSettings>() {
+                if let Ok(s) = state.lock() {
+                    let _ = persist_settings(app, &s);
+                }
+            }
         } else {
             let _ = win.show();
             let _ = win.set_focus();
@@ -245,6 +257,30 @@ pub fn run() {
 
             if let Some(win) = app.get_webview_window("main") {
                 apply_window_settings(&win, &loaded);
+
+                // Restore the last window position (physical pixels).
+                if let (Some(x), Some(y)) = (loaded.x, loaded.y) {
+                    let _ = win.set_position(PhysicalPosition::new(x, y));
+                }
+
+                // Track moves in memory; persist on close.
+                let settings_for_events = settings_for_setup.clone();
+                let handle_for_events = handle.clone();
+                win.on_window_event(move |event| match event {
+                    tauri::WindowEvent::Moved(pos) => {
+                        if let Ok(mut s) = settings_for_events.lock() {
+                            s.x = Some(pos.x);
+                            s.y = Some(pos.y);
+                        }
+                    }
+                    tauri::WindowEvent::CloseRequested { .. } => {
+                        if let Ok(s) = settings_for_events.lock() {
+                            let _ = persist_settings(&handle_for_events, &s);
+                        }
+                    }
+                    _ => {}
+                });
+
                 spawn_hover_loop(win, settings_for_setup.clone());
             }
             Ok(())
@@ -284,5 +320,15 @@ mod tests {
         let hz = Hotzone::default();
         assert!(hz.fx.abs() < 1e-9 && hz.fy.abs() < 1e-9);
         assert!((hz.fw - 1.0).abs() < 1e-9 && (hz.fh - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn position_round_trip() {
+        // Last-position persistence (Phase 4c).
+        let s = Settings { x: Some(123), y: Some(-45), ..Settings::default() };
+        let back: Settings =
+            serde_json::from_str(&serde_json::to_string(&s).expect("ser")).expect("de");
+        assert_eq!(back.x, Some(123));
+        assert_eq!(back.y, Some(-45));
     }
 }

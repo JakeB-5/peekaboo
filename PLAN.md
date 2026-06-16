@@ -119,19 +119,20 @@
 **목표** 설정 UI·상태 영속화·마지막 위치 복원·빌드 경로 정리.
 
 **산출물**
-- [ ] 설정 UI(크기·평소/호버 투명도·핫존 위치·패닉 단축키·북마크·은폐 토글)
-- [ ] 상태 영속화(`tauri-plugin-store`) — 설정·북마크·마지막 URL
-- [ ] 재실행 시 설정·북마크·마지막 위치 복원
-- [ ] 명령·이벤트 계약 구현(`set_opacity`·`set_hotzone`·`set_panic_shortcut`·`load_url`·`save_bookmark`)
-- [ ] macOS 빌드 경로 정리(`tauri build`, 미서명 실행 안내: `xattr -dr com.apple.quarantine`)
+- [x] 설정 UI(크기·평소/호버 투명도·핫존 3×3·패닉 단축키 캡처·북마크·은폐 토글) — Phase 4b
+- [x] 상태 영속화 — `serde_json`/`fs`(config dir `prefs.json`, 외부 store 플러그인 불요). 설정·북마크·마지막 URL·마지막 위치 저장 — Phase 4a/4c
+- [x] 재실행 시 복원 — 부팅 시 `load_settings`→설정/URL/opacity/창크기 적용, `set_position`으로 마지막 위치 복원 (Moved 추적 + 숨김/CloseRequested 시 영속화)
+- [x] 명령·이벤트 계약 — `get_settings`/`save_settings`로 통합 구현(opacity·hotzone·panic_shortcut·url·bookmark를 단일 Settings로 일괄 적용·영속). `reveal-state-changed` 이벤트 유지
+- [x] macOS 빌드 경로 정리 — `BUILD.md`(dev/build/미서명 실행 `xattr -dr com.apple.quarantine`/권한·한계 메모)
 
 **자동 검증**
-- [ ] `cargo build` / `clippy` / `tsc` / eslint 통과
-- [ ] `npm run tauri build`로 `.app`/`.dmg` 산출(시간 허용 시) 또는 `cargo build --release` 성공
+- [x] `cargo build` / `clippy --all-targets`(무경고) / `tsc` / eslint 통과
+- [x] Rust 단위 테스트 4종(serde 라운드트립·부분로드·기본핫존·위치 라운드트립)
+- [~] `npm run tauri build`로 `.app`/`.dmg` 산출 — 백그라운드 실행 후 결과 기록(아래 진행 로그)
 
-**수동 검증 (사용자)**
-- [ ] 재실행 시 설정·북마크·마지막 위치 복원
-- [ ] 빌드 산출물이 본인 머신에서 정상 실행
+**수동 검증 (사용자)** *(헤드리스 확인 불가)*
+- [ ] 창을 옮기고 재실행 시 설정·북마크·마지막 위치 복원
+- [ ] 빌드 산출물(`.app`)이 본인 머신에서 정상 실행(`xattr` 후)
 
 ---
 
@@ -144,3 +145,4 @@
 - **Phase 3 완료** — 은폐 강화: Accessory(Dock·Cmd-Tab 숨김)·Spaces 전역·content protection(macOS 15+ 무효 주석)·온디맨드 포커스(드래그 스트립 클릭). 자동 검증 + 런타임 스모크(정책 적용 후 무패닉) 통과. 수동(은폐 육안·화면공유 실측)은 사용자 머신 필요.
 - **Phase 4a 완료** — 영속화 코어: `Settings`(단일 소스, `Arc<Mutex<>>` managed) + `serde_json`/`fs` 영속화(config dir, 외부 store 플러그인 불요) + 커맨드 `get_settings`/`save_settings`(동적 핫존·동적 패닉 단축키 재등록 포함). 핫존을 fraction으로 일반화. 프론트는 부팅 시 `get_settings`로 opacity CSS 변수·URL 적용. 자동 검증 + Rust 단위 테스트 3종(serde 라운드트립·부분로드·기본핫존) + 런타임 스모크 통과.
 - **Phase 4b 완료** — 설정 UI: 미니 툴바(☰ 설정·★ 북마크·✕ 패닉) + 설정 패널(URL·북마크 칩·평소/호버 투명도 슬라이더·창 크기·핫존 3×3·패닉 단축키 키캡처·항상위/Spaces/화면공유 토글). 모든 변경은 `save_settings`로 영속·적용. id 교차검증(22/22 일치) + tsc/eslint + 런타임 스모크 통과.
+- **Phase 4c 완료** — 마지막 위치 복원(물리좌표 `x/y`, `Moved` 추적 + 숨김/CloseRequested 영속화 + 시작 시 `set_position`) + 빌드/배포 문서(`BUILD.md`). 단위 테스트 4종 + clippy/build + 런타임 스모크 통과. 프로덕션 번들 빌드는 별도 실행 후 기록.
