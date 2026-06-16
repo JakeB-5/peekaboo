@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>아키텍처 · 동작 — Peekaboo 기획</title>
+<link rel="stylesheet" href="assets/doc.css"/>
+</head>
+<body>
+<div class="wrap">
+<nav class="side">
+  <div class="brand"><span class="mk">◆</span> Peekaboo 기획</div>
+  <div class="sub">Stealth Webtoon Overlay · Tauri v2 · macOS · 2026-06</div>
+  <div class="navgrp">문서</div>
+  <a href="index.html">개요 · 인덱스</a>
+  <a href="feature-spec.html">1 · 기능 명세</a>
+  <a href="screen-design.html">2 · 화면 설계</a>
+  <a href="architecture.html" class="active">3 · 아키텍처·동작</a>
+  <a href="tech-stack.html">4 · 기술스택·구조</a>
+  <a href="roadmap.html">5 · 구현 로드맵</a>
+  <div class="navgrp">이 문서</div>
+  <a class="lv2" href="#model">프로세스 모델 · 책임 경계</a>
+  <a class="lv2" href="#statemachine">노출·패닉 상태 머신</a>
+  <a class="lv2" href="#window">창 속성 제어</a>
+  <a class="lv2" href="#hover">Hover 감지 설계</a>
+  <a class="lv2" href="#contract">명령 · 이벤트 계약</a>
+  <a class="lv2" href="#focus">포커스 모델</a>
+</nav>
+<main>
+
+<header class="hero">
+  <div class="eyebrow">Document 3 · Architecture &amp; Behavior</div>
+  <h1>아키텍처 · 동작 설계 — Peekaboo</h1>
+  <p class="lead">Peekaboo의 난이도는 UI가 아니라 <b>macOS 창 동작 제어</b>에 있다. 이 문서는 Tauri 2-프로세스 모델에서
+    <b>스텔스의 본체(Rust 코어)와 표현(WebView)의 책임 경계</b>를 확정하고, 노출/패닉 <b>상태 머신</b>, 창 속성 제어,
+    그리고 가장 까다로운 <b>클릭통과 하 hover 감지</b> 설계를 검증된 API로 정의한다. 기능 단위 요구는
+    <a class="inl" href="feature-spec.html">기능 명세</a>, 정확한 코드·설정은 <a class="inl" href="tech-stack.html">기술스택·구조</a> 참조.</p>
+  <div class="meta-row">
+    <span class="legend-chip"><span class="dot ld-progress"></span>Rust 코어 = 스텔스 본체</span>
+    <span class="legend-chip"><span class="dot ld-done"></span>WebView = 표현</span>
+    <span class="legend-chip"><span class="dot ld-accent2"></span>상태 단일 소스 = Rust</span>
+    <span class="legend-chip"><span class="dot ld-blocked"></span>content protection 한계</span>
+  </div>
+</header>
+
+<!-- ============================================================ -->
+<h2 id="model"><span class="num">①</span>프로세스 모델 · 책임 경계</h2>
+<p class="section-intro">Tauri 앱은 Rust로 작성한 네이티브 코어 프로세스와, 시스템 WebView에서 도는 프론트엔드로 나뉜다. Peekaboo에서 <b>스텔스를 결정하는 모든 창 속성 제어는 Rust 코어가 소유</b>하고, WebView는 콘텐츠 표현과 상호작용만 담당한다. 이 경계가 흐려지면(예: 패닉을 JS에서 처리) 지연·신뢰성이 나빠진다.</p>
+
+<figure class="fig">
+  <div class="fig-title">2-프로세스 책임 분리</div>
+  <svg viewBox="0 0 900 280" role="img" aria-label="왼쪽 WebView 프론트엔드(콘텐츠·투명도 CSS·설정 UI)와 오른쪽 Rust 코어(창 속성·글로벌 단축키·커서 폴링·상태 머신)가 IPC 명령/이벤트로 연결되고, Rust 코어가 macOS 윈도우 서버에 창 속성을 적용하는 구조.">
+    <defs>
+      <marker id="arwM" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#727a89"/></marker>
+    </defs>
+
+    <!-- WebView -->
+    <rect x="30" y="50" width="250" height="190" rx="10" fill="#171a21" stroke="#5fd07a" stroke-width="1.5"/>
+    <text x="155" y="74" class="t-ink" font-size="13" text-anchor="middle">WebView 프론트엔드</text>
+    <text x="155" y="91" font-size="10.5" text-anchor="middle" fill="#727a89">TS + Vite · 표현 담당</text>
+    <rect x="50" y="104" width="210" height="28" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="155" y="123" font-size="11" text-anchor="middle" class="t-dim">웹툰 콘텐츠 렌더</text>
+    <rect x="50" y="138" width="210" height="28" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="155" y="157" font-size="11" text-anchor="middle" class="t-dim">투명도 CSS · 노출 애니메이션</text>
+    <rect x="50" y="172" width="210" height="28" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="155" y="191" font-size="11" text-anchor="middle" class="t-dim">설정 패널 UI</text>
+    <rect x="50" y="206" width="210" height="24" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="155" y="222" font-size="10.5" text-anchor="middle" fill="#727a89">상태 수신 → 표현만 동기화</text>
+
+    <!-- Rust core -->
+    <rect x="430" y="50" width="270" height="190" rx="10" fill="#171a21" stroke="#6ea8fe" stroke-width="1.5"/>
+    <text x="565" y="74" class="t-ink" font-size="13" text-anchor="middle">Rust 코어 (src-tauri)</text>
+    <text x="565" y="91" font-size="10.5" text-anchor="middle" fill="#727a89">스텔스 본체 · 상태 단일 소스</text>
+    <rect x="450" y="104" width="230" height="28" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="565" y="123" font-size="11" text-anchor="middle" class="t-dim">창 속성(투명·항상위·클릭통과)</text>
+    <rect x="450" y="138" width="230" height="28" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="565" y="157" font-size="11" text-anchor="middle" class="t-dim">글로벌 단축키 → 패닉 hide</text>
+    <rect x="450" y="172" width="230" height="28" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="565" y="191" font-size="11" text-anchor="middle" class="t-dim">커서 폴링 + 핫존 히트테스트</text>
+    <rect x="450" y="206" width="230" height="24" rx="6" fill="#1d212b" stroke="#2a3038"/><text x="565" y="222" font-size="10.5" text-anchor="middle" fill="#727a89">노출/패닉 상태 머신</text>
+
+    <!-- macOS -->
+    <rect x="780" y="92" width="96" height="106" rx="10" fill="#1d212b" stroke="#9d7bff" stroke-width="1.5"/>
+    <text x="828" y="140" font-size="11.5" text-anchor="middle" class="t-ink">macOS</text>
+    <text x="828" y="158" font-size="10" text-anchor="middle" fill="#727a89">윈도우 서버</text>
+
+    <!-- IPC arrows -->
+    <line x1="282" y1="128" x2="426" y2="128" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwM)"/>
+    <text x="354" y="120" font-size="10" text-anchor="middle" fill="#727a89">command (JS→Rust)</text>
+    <line x1="426" y1="170" x2="282" y2="170" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwM)"/>
+    <text x="354" y="186" font-size="10" text-anchor="middle" fill="#727a89">event (Rust→JS)</text>
+
+    <line x1="702" y1="145" x2="776" y2="145" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwM)"/>
+    <text x="739" y="137" font-size="9.5" text-anchor="middle" fill="#727a89">네이티브 적용</text>
+  </svg>
+  <div class="fig-legend">
+    <span><i class="box cc-green"></i> 프론트(표현)</span>
+    <span><i class="box cc-accent"></i> Rust 코어(스텔스)</span>
+    <span><i class="box cc-accent2"></i> OS</span>
+  </div>
+  <figcaption>WebView는 콘텐츠와 투명도 표현만 담당하고, 창 속성·글로벌 단축키·커서 폴링·상태 머신은 모두 Rust 코어가 소유한다. 프론트는 Rust가 emit하는 상태 이벤트를 받아 표현만 동기화한다.</figcaption>
+</figure>
+
+<div class="tbl-wrap">
+<table>
+  <thead>
+    <tr><th>책임</th><th class="c">Rust 코어</th><th class="c">WebView</th><th>근거</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>창 속성(투명·항상위·클릭통과·content protection·activation policy)</td><td class="c"><span class="yes">● 소유</span></td><td class="c"><span class="partial">○ 명령만</span></td><td><small>네이티브 API 직접 호출이 안정적</small></td></tr>
+    <tr><td>글로벌 단축키 등록 + 패닉 hide</td><td class="c"><span class="yes">● 소유</span></td><td class="c"><span class="no">—</span></td><td><small>핸들러에서 직접 <code>hide()</code> = 저지연</small></td></tr>
+    <tr><td>커서 폴링 + 핫존 히트테스트</td><td class="c"><span class="yes">● 권장</span></td><td class="c"><span class="partial">△ 대안</span></td><td><small>IPC 왕복 없이 폴링 = 효율</small></td></tr>
+    <tr><td>노출/패닉 상태 머신</td><td class="c"><span class="yes">● 단일 소스</span></td><td class="c"><span class="partial">○ 동기화</span></td><td><small>상태 중복 방지</small></td></tr>
+    <tr><td>콘텐츠 표현 · 투명도 CSS · 설정 UI</td><td class="c"><span class="no">—</span></td><td class="c"><span class="yes">● 소유</span></td><td><small>표현은 웹 기술이 강점</small></td></tr>
+    <tr><td>설정·북마크 영속화</td><td class="c"><span class="yes">● store/fs</span></td><td class="c"><span class="partial">○ UI</span></td><td><small>파일 접근은 코어</small></td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="statemachine"><span class="num">②</span>노출 · 패닉 상태 머신</h2>
+<p class="section-intro">Peekaboo의 동작은 네 상태와 그 사이 전이로 환원된다. 이 상태 머신은 <b>Rust 코어가 단일 소스로 보유</b>하고, 전이가 일어날 때마다 프론트로 이벤트를 emit해 투명도/표현을 맞춘다.</p>
+
+<figure class="fig">
+  <div class="fig-title">상태 머신 — Hidden · Ghost · Revealed · Focused</div>
+  <svg viewBox="0 0 860 330" role="img" aria-label="네 상태(Hidden 숨김, Ghost 고스트, Revealed 노출, Focused 입력)와 전이: 패닉키로 어느 상태에서든 Hidden, 핫존 진입으로 Ghost에서 Revealed, 핫존 이탈로 복귀, 클릭으로 Revealed에서 Focused.">
+    <defs>
+      <marker id="arwS" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#727a89"/></marker>
+    </defs>
+
+    <!-- Ghost (center-left) -->
+    <rect x="80" y="130" width="180" height="70" rx="10" fill="#1d212b" stroke="#6ea8fe" stroke-width="1.8"/>
+    <text x="170" y="160" class="t-ink" font-size="13" text-anchor="middle">Ghost (고스트)</text>
+    <text x="170" y="178" font-size="10" text-anchor="middle" fill="#727a89">저투명 · 클릭통과 ON</text>
+
+    <!-- Revealed (center-right) -->
+    <rect x="430" y="130" width="180" height="70" rx="10" fill="#1d212b" stroke="#5fd07a" stroke-width="1.8"/>
+    <text x="520" y="160" class="t-ink" font-size="13" text-anchor="middle">Revealed (노출)</text>
+    <text x="520" y="178" font-size="10" text-anchor="middle" fill="#727a89">고투명도 · 핫존 통과해제</text>
+
+    <!-- Focused (right) -->
+    <rect x="690" y="130" width="150" height="70" rx="10" fill="#1d212b" stroke="#3fc7b4" stroke-width="1.8"/>
+    <text x="765" y="160" class="t-ink" font-size="13" text-anchor="middle">Focused</text>
+    <text x="765" y="178" font-size="10" text-anchor="middle" fill="#727a89">입력 수신(set_focus)</text>
+
+    <!-- Hidden (top center) -->
+    <rect x="340" y="20" width="180" height="64" rx="10" fill="none" stroke="#f0708a" stroke-width="1.8" stroke-dasharray="6 4"/>
+    <text x="430" y="48" class="t-ink" font-size="13" text-anchor="middle">Hidden (숨김)</text>
+    <text x="430" y="66" font-size="10" text-anchor="middle" fill="#727a89">window.hide()</text>
+
+    <!-- transitions -->
+    <!-- ghost <-> revealed -->
+    <line x1="262" y1="155" x2="426" y2="155" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwS)"/>
+    <text x="344" y="147" font-size="10" text-anchor="middle" fill="#5fd07a">핫존 진입</text>
+    <line x1="426" y1="180" x2="262" y2="180" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwS)"/>
+    <text x="344" y="196" font-size="10" text-anchor="middle" fill="#727a89">핫존 이탈</text>
+
+    <!-- revealed <-> focused -->
+    <line x1="612" y1="155" x2="686" y2="155" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwS)"/>
+    <text x="649" y="147" font-size="9.5" text-anchor="middle" fill="#3fc7b4">클릭</text>
+    <line x1="686" y1="182" x2="612" y2="182" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwS)"/>
+    <text x="649" y="198" font-size="9.5" text-anchor="middle" fill="#727a89">이탈</text>
+
+    <!-- any -> hidden (panic) -->
+    <line x1="200" y1="130" x2="360" y2="84" stroke="#f0708a" stroke-width="1.5" marker-end="url(#arwS)"/>
+    <line x1="520" y1="130" x2="470" y2="86" stroke="#f0708a" stroke-width="1.5" marker-end="url(#arwS)"/>
+    <text x="300" y="100" font-size="10.5" text-anchor="middle" fill="#f0708a">패닉키 (어느 상태에서든)</text>
+
+    <!-- hidden -> ghost (restore) -->
+    <line x1="356" y1="78" x2="220" y2="128" stroke="#6ea8fe" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arwS)"/>
+    <text x="250" y="118" font-size="10" text-anchor="middle" fill="#6ea8fe">패닉키/표시키 → 복귀</text>
+
+    <text x="430" y="300" font-size="10.5" text-anchor="middle" fill="#727a89">전이 조건은 Rust 폴링 루프(핫존)와 글로벌 단축키 핸들러(패닉)가 구동 · 상태는 Rust가 단일 보유</text>
+  </svg>
+  <div class="fig-legend">
+    <span><i class="cc-rose"></i> 패닉 전이</span>
+    <span><i class="cc-accent dash"></i> 복귀</span>
+    <span><i class="cc-green"></i> 호버 전이</span>
+    <span><i class="cc-teal"></i> 포커스 전이</span>
+  </div>
+  <figcaption>Ghost↔Revealed는 커서 폴링이, Revealed↔Focused는 클릭이, 그리고 패닉키는 어느 상태에서든(Focused 포함) Hidden으로 보낸다 — 다이어그램의 패닉 화살표는 대표로 일부 상태에서만 표기했다. Hidden에서 다시 패닉키/표시키를 누르면 Ghost로 복귀하고(스크롤 위치 유지), 핫존 안이면 폴링이 곧바로 Revealed로 전이시킨다.</figcaption>
+</figure>
+
+<div class="callout">
+  <div class="ct">상태별 창 속성</div>
+  <p><b>Hidden</b> — <code>window.hide()</code>(화면에서 제거). <b>Ghost</b> — 낮은 CSS 불투명도 + <code>set_ignore_cursor_events(true)</code>(클릭 통과). <b>Revealed</b> — 높은 불투명도 + 핫존에서 <code>set_ignore_cursor_events(false)</code>. <b>Focused</b> — Accessory 앱이므로 입력 수신 전 <code>set_focus()</code>로 온디맨드 활성화. 각 전이는 Rust가 네이티브 API를 적용하고 프론트에는 표현 동기화 이벤트만 보낸다.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="window"><span class="num">③</span>창 속성 제어</h2>
+<p class="section-intro">스텔스를 만드는 창 속성과 그 정확한 API·권한·한계. 모든 식별자는 사전 검증값이다.</p>
+
+<div class="tbl-wrap">
+<table>
+  <thead>
+    <tr><th>속성</th><th>설정 (tauri.conf.json)</th><th>런타임 (Rust / JS)</th><th>권한 (capabilities)</th><th>한계</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>투명 배경</b></td>
+      <td><code>app.windows[].transparent: true</code> + <code>app.macOSPrivateApi: true</code></td>
+      <td>—</td>
+      <td>—</td>
+      <td><small>Cargo <code>macos-private-api</code> feature 필수 → App Store 부적격</small></td>
+    </tr>
+    <tr>
+      <td><b>무테 · 그림자</b></td>
+      <td><code>decorations: false</code> · <code>shadow: false</code></td>
+      <td>—</td>
+      <td>—</td>
+      <td><small>무테라 드래그 영역을 직접 정의해야</small></td>
+    </tr>
+    <tr>
+      <td><b>항상 위</b></td>
+      <td><code>alwaysOnTop: true</code></td>
+      <td><code>set_always_on_top(true)</code> / <code>setAlwaysOnTop</code></td>
+      <td><code>core:window:allow-set-always-on-top</code></td>
+      <td><small>풀스크린 앱 위 부유는 NSPanel 필요(스톡 미노출)</small></td>
+    </tr>
+    <tr>
+      <td><b>Spaces 전역</b></td>
+      <td><code>visibleOnAllWorkspaces: true</code></td>
+      <td><code>set_visible_on_all_workspaces(true)</code></td>
+      <td>—</td>
+      <td><small>—</small></td>
+    </tr>
+    <tr>
+      <td><b>클릭 통과</b></td>
+      <td>—</td>
+      <td><code>set_ignore_cursor_events(bool)</code> / <code>setIgnoreCursorEvents</code></td>
+      <td><code>core:window:allow-set-ignore-cursor-events</code></td>
+      <td><small>켜면 webview가 마우스 이벤트를 전혀 못 받음 → §④ 참조</small></td>
+    </tr>
+    <tr>
+      <td><b>커서 위치 읽기</b></td>
+      <td>—</td>
+      <td><code>cursor_position()→PhysicalPosition&lt;f64&gt;</code> / <code>cursorPosition()</code></td>
+      <td><code>core:window:allow-cursor-position</code></td>
+      <td><small>데스크톱 절대좌표 — 클릭통과와 무관하게 동작</small></td>
+    </tr>
+    <tr>
+      <td><b>화면공유 비노출</b></td>
+      <td><code>contentProtected: true</code></td>
+      <td><code>set_content_protected(true)</code> / <code>setContentProtected</code></td>
+      <td><code>core:window:allow-set-content-protected</code></td>
+      <td><small><b>macOS 15+ 무효</b>(ScreenCaptureKit 무시) — best-effort</small></td>
+    </tr>
+    <tr>
+      <td><b>앱 은폐</b></td>
+      <td><code>app.macOS.activationPolicy: "accessory"</code></td>
+      <td><code>set_activation_policy(ActivationPolicy::Accessory)</code></td>
+      <td>—</td>
+      <td><small>정적 대안 Info.plist <code>LSUIElement</code>. §⑥ 포커스 주의</small></td>
+    </tr>
+    <tr>
+      <td><b>포커스(온디맨드)</b></td>
+      <td>—</td>
+      <td><code>set_focus()</code> / <code>setFocus()</code></td>
+      <td><code>core:window:allow-set-focus</code></td>
+      <td><small>Accessory 앱은 <code>show()</code>만으론 포커스 안 옴</small></td>
+    </tr>
+    <tr>
+      <td><b>숨김 / 표시</b></td>
+      <td><code>visible: false</code>(시작값)</td>
+      <td><code>hide()</code> / <code>show()</code></td>
+      <td><code>core:window:allow-hide</code> · <code>allow-show</code></td>
+      <td><small>패닉은 Rust 핸들러에서 직접 <code>hide()</code></small></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout danger">
+  <div class="ct">현실 점검 · content protection (근거)</div>
+  <p>검증 근거: Tauri는 <code>set_content_protected(true)</code>를 macOS <code>NSWindow.sharingType = NSWindowSharingNone</code>으로 매핑한다. 그러나 <b>macOS 15(Sequoia)+에서는 ScreenCaptureKit가 모든 NSWindow를 단일 합성 프레임버퍼로 캡처</b>하며 이 플래그를 무시한다(Tauri #14200, "status: upstream", 알려진 우회 없음). 결과적으로 Zoom·Meet·QuickTime 화면 공유에 창이 노출된다. content protection은 macOS ≤14 + 구형 CoreGraphics 캡처에서만 유효하고, 일부 Chromium 기반 공유는 구버전에서도 못 막는다(#10213). <b>설계 결론: 화면 공유 비노출은 보장 기능이 아닌 보조 수단으로 두고, 실질 방어는 패닉 단축키로 한다.</b> 대응 전략은 <a class="inl" href="roadmap.html">로드맵 리스크</a> 참조.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="hover"><span class="num">④</span>Hover 감지 설계 (클릭통과 크럭스)</h2>
+<p class="section-intro">"클릭은 아래로 통과시키되 호버는 감지"는 본질적으로 충돌한다. <code>set_ignore_cursor_events(true)</code>를 켜는 순간 webview는 마우스 이벤트를 전혀 받지 못하므로 DOM <code>mouseenter</code>/<code>mouseleave</code>는 물론 네이티브 <code>WindowEvent::CursorEntered/Left</code>도 발생하지 않는다. 검증된 유일한 정공법은 <b>전역 커서 좌표 폴링 + 핫존 사각형 히트테스트</b>다.</p>
+
+<figure class="fig">
+  <div class="fig-title">커서 폴링 루프</div>
+  <svg viewBox="0 0 820 250" role="img" aria-label="Rust 폴링 루프: 약 40ms마다 커서 위치를 읽어 핫존 사각형 내부 여부를 판정하고, 내부면 Revealed(불투명도 상승+클릭통과 해제), 외부면 Ghost(불투명도 하강+클릭통과)로 전이한 뒤 대기하고 반복.">
+    <defs>
+      <marker id="arwH" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#727a89"/></marker>
+    </defs>
+    <rect x="40" y="100" width="150" height="50" rx="8" fill="#1d212b" stroke="#6ea8fe" stroke-width="1.5"/>
+    <text x="115" y="122" class="t-ink" font-size="11.5" text-anchor="middle">커서 위치 읽기</text>
+    <text x="115" y="138" font-size="9.5" text-anchor="middle" fill="#727a89">cursor_position()</text>
+
+    <polygon points="250,125 330,98 410,125 330,152" fill="#1d212b" stroke="#f0b450" stroke-width="1.5"/>
+    <text x="330" y="122" font-size="10.5" text-anchor="middle" class="t-ink">핫존 내부?</text>
+    <text x="330" y="137" font-size="9" text-anchor="middle" fill="#727a89">rect 히트테스트</text>
+
+    <rect x="470" y="48" width="170" height="52" rx="8" fill="#1d212b" stroke="#5fd07a" stroke-width="1.5"/>
+    <text x="555" y="70" class="t-ink" font-size="11.5" text-anchor="middle">→ Revealed</text>
+    <text x="555" y="86" font-size="9" text-anchor="middle" fill="#727a89">opacity↑ · ignore=false</text>
+
+    <rect x="470" y="150" width="170" height="52" rx="8" fill="#1d212b" stroke="#727a89" stroke-width="1.5"/>
+    <text x="555" y="172" class="t-ink" font-size="11.5" text-anchor="middle">→ Ghost</text>
+    <text x="555" y="188" font-size="9" text-anchor="middle" fill="#727a89">opacity↓ · ignore=true</text>
+
+    <rect x="690" y="100" width="100" height="50" rx="8" fill="#1d212b" stroke="#9d7bff" stroke-width="1.5"/>
+    <text x="740" y="122" class="t-ink" font-size="11" text-anchor="middle">대기</text>
+    <text x="740" y="138" font-size="9" text-anchor="middle" fill="#727a89">~40ms</text>
+
+    <line x1="190" y1="125" x2="246" y2="125" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwH)"/>
+    <line x1="370" y1="110" x2="466" y2="78" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwH)"/>
+    <text x="430" y="92" font-size="9" fill="#5fd07a">예</text>
+    <line x1="370" y1="140" x2="466" y2="172" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwH)"/>
+    <text x="430" y="166" font-size="9" fill="#727a89">아니오</text>
+    <line x1="640" y1="74" x2="725" y2="100" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwH)"/>
+    <line x1="640" y1="176" x2="725" y2="150" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwH)"/>
+    <path d="M740,150 C740,210 115,215 115,152" fill="none" stroke="#727a89" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arwH)"/>
+    <text x="420" y="228" font-size="9.5" text-anchor="middle" fill="#727a89">반복 (상태 변화시에만 네이티브 토글 + 이벤트 emit)</text>
+  </svg>
+  <figcaption>Rust 폴링 루프가 ~40ms 주기로 커서를 읽어 핫존 내부 여부에 따라 Ghost/Revealed로 전이한다. 매 틱마다 토글하지 않고 <b>상태가 바뀔 때만</b> <code>set_ignore_cursor_events</code>/불투명도를 적용하고 이벤트를 emit해 비용을 줄인다.</figcaption>
+</figure>
+
+<div class="grid two">
+  <div class="panel">
+    <h4>설계 결정</h4>
+    <ul>
+      <li><b>위치 = Rust 루프</b> — <code>cursor_position()</code>(desktop-only)를 코어 스레드에서 폴링. JS <code>setInterval</code> + <code>cursorPosition()</code>도 가능하나 매 틱 IPC라 비효율.</li>
+      <li><b>주기</b> — 30–60ms(타협: 반응성 vs CPU). 정지 시 주기를 늘리는 적응형도 가능.</li>
+      <li><b>핫존 rect</b> — <code>outer_position()</code> + <code>inner_size()</code>(+ <code>scale_factor</code>)로 창 좌표를 구해 핫존 사각형을 계산.</li>
+      <li><b>엣지 트리거</b> — "내부↔외부"가 바뀌는 순간만 네이티브 토글·이벤트 emit.</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h4>대안 · 한계</h4>
+    <ul>
+      <li><b>핫존만 통과해제</b> — 작은 핫존 영역은 클릭통과를 끄고, 나머지만 통과 → 폴링 부담 경감(레이아웃 설계 필요).</li>
+      <li><b>이벤트 기반</b> — objc2로 NSEvent 전역 모니터를 달면 폴링 없이 가능하나, <b>손쉬운 사용 권한</b>이 필요해 스텔스/마찰 측면에서 비권장.</li>
+      <li><b>공식 한계</b> — "클릭통과 창과 커서 교차" 전용 이벤트는 stable Tauri에 없음(feature #9250가 <code>cursor_position</code> 폴링으로 귀결).</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="contract"><span class="num">⑤</span>명령 · 이벤트 계약</h2>
+<p class="section-intro">프론트(표현)와 코어(상태) 사이 인터페이스. 명령은 JS→Rust(<code>invoke</code>), 이벤트는 Rust→JS(<code>emit</code>). 상태 머신은 Rust 단일 소스이므로, 프론트는 명령을 "요청"하고 결과는 이벤트로 받는다.</p>
+
+<div class="grid two">
+  <div class="panel">
+    <h4>명령 (JS → Rust)</h4>
+    <ul>
+      <li><code>set_opacity(ghost, revealed)</code> — 평소/호버 불투명도 설정</li>
+      <li><code>set_hotzone(rect)</code> — 핫존 위치·크기 갱신</li>
+      <li><code>set_panic_shortcut(accel)</code> — 패닉 단축키 재등록</li>
+      <li><code>toggle_panic()</code> — 수동 토글(트레이/버튼)</li>
+      <li><code>set_content_protected(bool)</code> — 보조(한계 인지)</li>
+      <li><code>load_url(url)</code> · <code>save_bookmark(...)</code></li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h4>이벤트 (Rust → JS)</h4>
+    <ul>
+      <li><code>reveal-state-changed</code> → <code>{ state: "ghost"|"revealed"|"hidden" }</code> — 표현(불투명도) 동기화. <small>Focused는 입력 포커스 전용 전이라 불투명도 변화가 없어 이 이벤트에는 포함하지 않는다.</small></li>
+      <li><code>panic</code> — 숨김 직전 잔상 제거 트리거</li>
+      <li><code>shortcut-registered</code> → <code>{ ok, accel }</code></li>
+      <li><code>settings-loaded</code> → 영속화 상태 주입</li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout">
+  <div class="ct">패닉의 지연 최소화</div>
+  <p>패닉은 "이벤트 → 프론트 처리 → 명령 → 숨김" 왕복을 타면 느리다. 따라서 글로벌 단축키 <b>핸들러(Rust)에서 곧장 <code>window.hide()</code></b>를 호출하고, 잔상 제거가 필요하면 <code>panic</code> 이벤트는 숨김과 <b>병행</b>해 보낸다. 프론트가 죽어 있어도 숨김은 동작한다.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="focus"><span class="num">⑥</span>포커스 모델 (Accessory)</h2>
+<p class="section-intro">앱을 Dock·Cmd-Tab에서 숨기면(Accessory) 입력 포커스 거동이 달라진다. 검증된 사실에 근거해 "평소엔 비활성, 필요할 때만 활성"을 설계한다.</p>
+
+<div class="wg">
+  <div class="col win">
+    <h4>확정 사실</h4>
+    <ul>
+      <li>Accessory 앱도 <b>포커스 수신 가능</b> — Apple 정의상 "프로그램적으로 또는 창 클릭으로 활성화될 수 있음".</li>
+      <li>글로벌 단축키(패닉)는 <b>activation policy와 무관</b>하게 발화 — Accessory여도, 비포커스여도 동작.</li>
+      <li>입력이 필요하면 <code>set_focus()</code>로 앱을 프로그램적으로 활성화(내부적으로 앱 활성화 + 키 윈도우 지정에 해당)해 키보드 입력을 받음.</li>
+    </ul>
+  </div>
+  <div class="col gap">
+    <h4>마찰 · 주의</h4>
+    <ul>
+      <li>Accessory 앱은 <code>show()</code>만으로 창이 앞으로 오거나 포커스되지 않음(#5122) → 노출/입력 시 <code>set_focus()</code> 명시.</li>
+      <li><code>set_activation_policy</code>는 <code>App</code>에서 호출(과거 <code>AppHandle</code> 불가, #9244) — 초기화 시점 주의.</li>
+      <li>Spotlight/Raycast급 "활성 안 뺏는 부유"는 NSPanel <code>nonactivatingPanel</code> + <code>canBecomeKeyWindow</code> 필요 → 스톡 Tauri 미노출, objc2/커뮤니티 플러그인 필요(도입은 로드맵 결정 사항).</li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout good">
+  <div class="ct">권고 동작</div>
+  <p>웹툰을 "보기"는 대부분 스크롤뿐이라 포커스가 늘 필요하진 않다. 따라서 <b>평소엔 Ghost(비활성·클릭통과), 핫존에서 Revealed</b>로 두고, 스크롤/클릭 등 입력이 실제로 필요할 때만 <code>set_focus()</code>로 잠깐 활성화하는 모델이 가장 단순하면서 충분하다. NSPanel 도입은 "활성 전환이 거슬린다"는 문제가 실측될 때 검토한다.</p>
+</div>
+
+<div class="crosslinks">
+  <a href="screen-design.html"><span class="ar">←</span> 화면 설계</a>
+  <a href="feature-spec.html">기능 명세 <span class="ar">→</span></a>
+  <a href="roadmap.html">구현 로드맵 <span class="ar">→</span></a>
+</div>
+<div class="footer">Peekaboo 기획 · 아키텍처·동작 · 2026-06 · <a href="index.html">인덱스</a></div>
+
+</main>
+</div>
+</body>
+</html>

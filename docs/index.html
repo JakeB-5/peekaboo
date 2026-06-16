@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>개요 · 인덱스 — Peekaboo 기획</title>
+<link rel="stylesheet" href="assets/doc.css"/>
+</head>
+<body>
+<div class="wrap">
+<nav class="side">
+  <div class="brand"><span class="mk">◆</span> Peekaboo 기획</div>
+  <div class="sub">Stealth Webtoon Overlay · Tauri v2 · macOS · 2026-06</div>
+  <div class="navgrp">문서</div>
+  <a href="index.html" class="active">개요 · 인덱스</a>
+  <a href="feature-spec.html">1 · 기능 명세</a>
+  <a href="screen-design.html">2 · 화면 설계</a>
+  <a href="architecture.html">3 · 아키텍처·동작</a>
+  <a href="tech-stack.html">4 · 기술스택·구조</a>
+  <a href="roadmap.html">5 · 구현 로드맵</a>
+  <div class="navgrp">이 문서</div>
+  <a class="lv2" href="#vision">한 줄 비전·배경</a>
+  <a class="lv2" href="#threat">위협 모델 · 방어 기제</a>
+  <a class="lv2" href="#decision">핵심 결정</a>
+  <a class="lv2" href="#docmap">문서 맵</a>
+  <a class="lv2" href="#metrics">한눈 요약</a>
+  <a class="lv2" href="#roadmap-mini">로드맵 미니</a>
+</nav>
+<main>
+
+<header class="hero">
+  <div class="eyebrow">Peekaboo · Stealth Webtoon Overlay · 기획 문서 세트</div>
+  <h1>Peekaboo — 개요 · 인덱스</h1>
+  <p class="lead">
+    <b>Peekaboo</b>는 회사에서 웹툰을 몰래 보기 위한 macOS 데스크톱 오버레이 앱이다.
+    제품의 본질은 한 줄로 압축된다 — <b>"보고 싶을 때만 보이고, 위험할 때 즉시 사라진다."</b>
+    임의의 웹툰 페이지를 원하는 크기·투명도의 떠 있는 창으로 띄우되, 평소엔 거의 드러나지 않다가
+    지정 영역에 마우스를 올릴 때만 또렷해지고(hover-reveal), 들킬 위기엔 전역 단축키 한 번으로 사라진다
+    (화면 공유 비노출은 best-effort — 최신 macOS에선 한계). 본 인덱스는 5개 상세 문서의 허브로서 비전·핵심 결정·지표·진입점을 한 화면에 모은다.
+  </p>
+  <div class="meta-row">
+    <span class="legend-chip"><span class="dot ld-progress"></span> 플랫폼 = Tauri v2</span>
+    <span class="legend-chip"><span class="dot ld-teal"></span> 타깃 = macOS 단독</span>
+    <span class="legend-chip"><span class="dot ld-accent2"></span> 핵심가치 = 안 들킴</span>
+    <span class="legend-chip"><span class="dot ld-done"></span> 현재 = greenfield(코드 0)</span>
+  </div>
+</header>
+
+<h2 id="vision"><span class="num">①</span> 한 줄 비전 · 배경</h2>
+<p>
+  <strong>비전:</strong> "근무 중 누구에게도 들키지 않고, 보고 싶을 때 즉시 띄워 한 컷 보고, 인기척이 느껴지면
+  단축키 한 번에 흔적 없이 사라지는 웹툰 뷰어." 일반 브라우저로 웹툰을 보는 것과의 차이는 전부
+  <em>은닉성</em>에 있다 — 평소 노출 최소화, 위기 시 즉시 탈출, 화면 공유 비노출(best-effort), 앱 존재 자체의 은폐.
+</p>
+<p>
+  <strong>배경:</strong> 사무실 환경에는 "들킬 경로"가 여럿이다. ⑴ 화면 공유·녹화 중 화면에 떠 있던 창이 그대로 송출되고,
+  ⑵ 상사·동료가 등 뒤로 다가오며, ⑶ 평소 화면에 콘텐츠가 빤히 떠 있고, ⑷ Dock·Cmd-Tab·앱 스위처에 앱 흔적이 남는다.
+  Peekaboo는 이 네 경로 각각에 대응하는 방어 기제를 OS 레벨(Tauri/Rust)에서 구현하는 것을 목표로 한다.
+  난이도는 UI가 아니라 <b>macOS 창 동작 제어</b>에 있다.
+</p>
+<div class="panel">
+  <div class="grid three">
+    <div>
+      <h4>무엇을</h4>
+      <p class="muted small">투명도·크기 조절되는 항상-위 웹 오버레이 + hover-reveal + 패닉 단축키 + 화면공유 비노출(best-effort).</p>
+    </div>
+    <div>
+      <h4>왜</h4>
+      <p class="muted small">일반 브라우저로는 불가능한 "안 들키는" 시청 — 노출 최소화·즉시 탈출·흔적 은폐.</p>
+    </div>
+    <div>
+      <h4>어떻게</h4>
+      <p class="muted small">Tauri v2(Rust 코어 + WebView UI)로 macOS 창 속성을 직접 제어. 경량 바이너리 = 흔적 최소.</p>
+    </div>
+  </div>
+</div>
+
+<h2 id="threat"><span class="num">②</span> 위협 모델 · 방어 기제</h2>
+<p class="section-intro">"들킬 수 있는 경로"를 네 가지로 정의하고, 각 경로에 1:1로 대응하는 방어 기제를 둔다. 이 매핑이 제품 전체의 설계 골격이며, 각 방어 기제의 구현은 <a class="inl" href="architecture.html">아키텍처·동작</a> 문서에서 OS API 레벨로 상세화한다.</p>
+
+<figure class="fig">
+  <div class="fig-title">위협 → 방어 매핑</div>
+  <svg viewBox="0 0 920 300" role="img" aria-label="사무실에서 웹툰 시청이 들킬 수 있는 네 가지 경로(화면 공유·등 뒤 접근·평소 노출·Dock 흔적)와, 각각에 1:1 대응하는 Peekaboo의 네 방어 기제(Content Protection·패닉 단축키·투명도+Hover-Reveal·Accessory 정책)를 잇는 매핑 다이어그램.">
+    <defs>
+      <marker id="arwT" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#727a89"/>
+      </marker>
+    </defs>
+
+    <text x="165" y="26" class="t-dim" font-size="12" text-anchor="middle">들킬 수 있는 경로 · 위협</text>
+    <text x="755" y="26" class="t-dim" font-size="12" text-anchor="middle">Peekaboo 방어 기제</text>
+
+    <!-- threats (rose) -->
+    <rect x="40" y="48" width="250" height="48" rx="8" fill="#1d212b" stroke="#f0708a" stroke-width="1.5"/>
+    <text x="165" y="69" class="t-ink" font-size="12.5" text-anchor="middle">화면 공유 · 녹화</text>
+    <text x="165" y="86" font-size="10.5" text-anchor="middle" fill="#727a89">Zoom · Meet · 화면 캡처</text>
+
+    <rect x="40" y="108" width="250" height="48" rx="8" fill="#1d212b" stroke="#f0708a" stroke-width="1.5"/>
+    <text x="165" y="129" class="t-ink" font-size="12.5" text-anchor="middle">상사 · 동료가 등 뒤로</text>
+    <text x="165" y="146" font-size="10.5" text-anchor="middle" fill="#727a89">긴급 — 1초 안에 숨겨야</text>
+
+    <rect x="40" y="168" width="250" height="48" rx="8" fill="#1d212b" stroke="#f0708a" stroke-width="1.5"/>
+    <text x="165" y="189" class="t-ink" font-size="12.5" text-anchor="middle">평소 화면에 그대로 노출</text>
+    <text x="165" y="206" font-size="10.5" text-anchor="middle" fill="#727a89">지나가다 흘끗</text>
+
+    <rect x="40" y="228" width="250" height="48" rx="8" fill="#1d212b" stroke="#f0708a" stroke-width="1.5"/>
+    <text x="165" y="249" class="t-ink" font-size="12.5" text-anchor="middle">Dock · Cmd-Tab 흔적</text>
+    <text x="165" y="266" font-size="10.5" text-anchor="middle" fill="#727a89">앱 존재 자체가 단서</text>
+
+    <!-- defenses (green) -->
+    <rect x="630" y="48" width="250" height="48" rx="8" fill="#1d212b" stroke="#5fd07a" stroke-width="1.5"/>
+    <text x="755" y="69" class="t-ink" font-size="12.5" text-anchor="middle">Content Protection</text>
+    <text x="755" y="86" font-size="10.5" text-anchor="middle" fill="#727a89">구버전 macOS만 · best-effort</text>
+
+    <rect x="630" y="108" width="250" height="48" rx="8" fill="#1d212b" stroke="#5fd07a" stroke-width="1.5"/>
+    <text x="755" y="129" class="t-ink" font-size="12.5" text-anchor="middle">패닉 글로벌 단축키</text>
+    <text x="755" y="146" font-size="10.5" text-anchor="middle" fill="#727a89">어디서든 즉시 숨김</text>
+
+    <rect x="630" y="168" width="250" height="48" rx="8" fill="#1d212b" stroke="#5fd07a" stroke-width="1.5"/>
+    <text x="755" y="189" class="t-ink" font-size="12.5" text-anchor="middle">투명도 + Hover-Reveal</text>
+    <text x="755" y="206" font-size="10.5" text-anchor="middle" fill="#727a89">올린 영역만 또렷</text>
+
+    <rect x="630" y="228" width="250" height="48" rx="8" fill="#1d212b" stroke="#5fd07a" stroke-width="1.5"/>
+    <text x="755" y="249" class="t-ink" font-size="12.5" text-anchor="middle">Accessory 정책</text>
+    <text x="755" y="266" font-size="10.5" text-anchor="middle" fill="#727a89">앱을 Dock에서 은폐</text>
+
+    <!-- 1:1 arrows -->
+    <line x1="294" y1="72"  x2="626" y2="72"  stroke="#727a89" stroke-width="1.5" marker-end="url(#arwT)"/>
+    <line x1="294" y1="132" x2="626" y2="132" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwT)"/>
+    <line x1="294" y1="192" x2="626" y2="192" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwT)"/>
+    <line x1="294" y1="252" x2="626" y2="252" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwT)"/>
+  </svg>
+  <div class="fig-legend">
+    <span><i class="box cc-rose"></i> 위협(들킬 경로)</span>
+    <span><i class="box cc-green"></i> 방어 기제(Peekaboo 기능)</span>
+  </div>
+  <figcaption>네 위협 경로 각각에 정확히 하나의 방어 기제가 대응한다. 모든 방어는 OS 레벨(Tauri/Rust)에서 창 속성으로 구현되며, "기능이 된다"가 아니라 "들키지 않는다"가 각 기능의 합격선이다.</figcaption>
+</figure>
+
+<div class="callout danger">
+  <div class="ct">현실 점검 · 화면 공유 비노출의 한계</div>
+  <p>사전 검증 결과, <b>content protection은 macOS 15(Sequoia) 이상에서 화면 공유·녹화를 막지 못한다</b> — Zoom·Meet·QuickTime가 사용하는 ScreenCaptureKit가 합성된 프레임버퍼를 그대로 캡처하며 <code>NSWindowSharingNone</code> 플래그를 무시하기 때문이다(Tauri #14200, Apple 측 의도된 변경, 알려진 우회 없음). content protection은 <b>구버전 macOS·구형 캡처 API</b>에서만 유효하다. 따라서 화면 공유 상황의 <b>실질적 방어선은 "패닉 단축키로 사전/즉시 숨기기"</b>이며, content protection은 보조 수단으로만 둔다. 근거와 대응은 <a class="inl" href="architecture.html">아키텍처</a>·<a class="inl" href="roadmap.html">로드맵(리스크)</a>에서 다룬다.</p>
+</div>
+
+<h2 id="decision"><span class="num">③</span> 핵심 결정</h2>
+<div class="callout rec">
+  <div class="ct">권고 · Tauri v2 + macOS 단독</div>
+  <p>
+    <strong>1.</strong> 프레임워크는 <strong>Tauri v2</strong>(Rust 코어 + 시스템 WebView). 투명·항상-위·글로벌 단축키·클릭 통과·화면공유 비노출이
+    모두 네이티브 창 속성으로 제어 가능하고, 바이너리/메모리가 가벼워 "흔적 최소화"라는 제품 가치와 일치한다.
+  </p>
+  <p>
+    <strong>2.</strong> 타깃은 <strong>macOS 단독</strong>. 투명창·content protection·Dock 은폐 등 핵심 기능이 OS별로 동작이 갈리므로,
+    크로스플랫폼 추상화 비용을 들이지 않고 macOS 전용 API에 의존해 완성도를 높인다.
+  </p>
+  <p>
+    <strong>3.</strong> 책임 경계는 명확히 둔다 — <strong>스텔스의 본체는 Rust(Tauri) 측</strong> 창 제어이고, WebView(프론트)는 표현·상호작용만 담당한다.
+    이 경계가 <a class="inl" href="architecture.html">아키텍처</a> 설계의 중심이다.
+  </p>
+</div>
+
+<h2 id="docmap"><span class="num">④</span> 문서 맵</h2>
+<p class="section-intro">5개 상세 문서는 기능 → 화면 설계 → 동작 설계 → 구현 스택 → 일정 순으로 읽도록 구성했다.</p>
+<div class="cards two">
+  <div class="item s-teal">
+    <div class="top"><h3>1 · 기능 명세</h3><span class="badge b-teal">명세</span></div>
+    <p class="desc">오버레이 창·투명도·hover-reveal·패닉 탈출·스텔스(화면공유 비노출)·뷰어 로딩·설정을 기능 단위로 분해하고 MVP / v1 / v2 우선순위를 매긴다.</p>
+    <a class="inl" href="feature-spec.html">열기 →</a>
+  </div>
+  <div class="item s-accent2">
+    <div class="top"><h3>2 · 화면 설계</h3><span class="badge b-l">목업</span></div>
+    <p class="desc">오버레이의 3상태(고스트·노출·패닉)·창 해부도·설정 패널·투명도 스펙트럼을 실제 렌더되는 HTML/SVG 목업으로 시각화한다.</p>
+    <a class="inl" href="screen-design.html">열기 →</a>
+  </div>
+  <div class="item s-progress">
+    <div class="top"><h3>3 · 아키텍처 · 동작</h3><span class="badge b-l">설계</span></div>
+    <p class="desc">Tauri 2-프로세스 모델, Rust 코어 ↔ WebView 책임 분리, 노출/패닉 상태 머신, 창 속성 제어(투명·항상위·클릭통과·content protection), hover 감지 설계.</p>
+    <a class="inl" href="architecture.html">열기 →</a>
+  </div>
+  <div class="item s-accent2">
+    <div class="top"><h3>4 · 기술스택 · 구조</h3><span class="badge b-p">구현</span></div>
+    <p class="desc">Tauri v2 + Rust 크레이트·플러그인(global-shortcut), 프론트(TS+Vite), 프로젝트 디렉터리, tauri.conf.json 핵심 키, capabilities/권한, macOS 빌드·서명·공증.</p>
+    <a class="inl" href="tech-stack.html">열기 →</a>
+  </div>
+  <div class="item s-done">
+    <div class="top"><h3>5 · 구현 로드맵</h3><span class="badge b-green">일정</span></div>
+    <p class="desc">스캐폴딩 → MVP(오버레이+패닉) → 스텔스(hover-reveal+화면공유 비노출) → 설정·UX 폴리시 → 배포까지 페이즈별 산출물·검증 게이트·리스크.</p>
+    <a class="inl" href="roadmap.html">열기 →</a>
+  </div>
+</div>
+
+<h2 id="metrics"><span class="num">⑤</span> 한눈 요약 · 핵심 지표</h2>
+<div class="kpis">
+  <div class="kpi"><div class="v rose">4</div><div class="k">위협 경로</div><div class="note">화면공유 · 등뒤접근 · 평소노출 · Dock흔적</div></div>
+  <div class="kpi"><div class="v green">4</div><div class="k">방어 기제</div><div class="note">content protection · 패닉키 · hover+투명 · Accessory</div></div>
+  <div class="kpi"><div class="v accent">2</div><div class="k">프로세스</div><div class="note">Rust 코어(스텔스) · WebView(UI)</div></div>
+  <div class="kpi"><div class="v accent2">5</div><div class="k">구현 페이즈</div><div class="note">Phase 0 스캐폴딩 → Phase 4 배포</div></div>
+</div>
+<div class="tbl-wrap">
+<table>
+  <thead>
+    <tr><th>비교 축</th><th>일반 브라우저로 보기</th><th class="c">Peekaboo</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>평소 노출</td><td>창이 그대로 보임</td><td class="c"><span class="yes">○ 투명 + hover-reveal</span></td></tr>
+    <tr><td>들킬 때 탈출 속도</td><td>창 찾아 닫기(수 초)</td><td class="c"><span class="yes">○ 단축키 1회 즉시</span></td></tr>
+    <tr><td>화면 공유 송출</td><td class="c"><span class="no">✕ 그대로 노출</span></td><td class="c"><span class="partial">△ best-effort(구버전 macOS)</span></td></tr>
+    <tr><td>앱 흔적(Dock·Cmd-Tab)</td><td class="c"><span class="no">✕ 노출</span></td><td class="c"><span class="yes">○ Accessory로 은폐</span></td></tr>
+    <tr><td>설치/실행 흔적</td><td>브라우저 방문기록</td><td class="c"><span class="partial">△ 경량 단일 앱</span></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="roadmap-mini"><span class="num">⑥</span> 로드맵 미니</h2>
+<div class="timeline">
+  <div class="phase p-now">
+    <div class="ph"><h3>Phase 0–1 · 스캐폴딩 + MVP</h3><span class="when">지금</span></div>
+    <p>Tauri v2 프로젝트 생성 → 투명·항상-위·무테 오버레이 창에 웹툰 URL 로드 → <b>패닉 글로벌 단축키</b>로 즉시 show/hide.
+       "띄우고 / 즉시 숨긴다" 수직 경로부터 동작시킨다.</p>
+  </div>
+  <div class="phase p-next">
+    <div class="ph"><h3>Phase 2–3 · 스텔스 본체 + 은폐</h3><span class="when">다음</span></div>
+    <p>클릭 통과(ignore cursor events) + 커서 위치 폴링 기반 <b>hover-reveal</b>·투명도 조절(P2),
+       이어서 Accessory(Dock·Cmd-Tab 은폐)·Spaces 전역과 <b>content protection</b>(화면 공유 비노출 — 한계 실측)(P3).</p>
+  </div>
+  <div class="phase p-later">
+    <div class="ph"><h3>Phase 4 · 폴리시 + 배포</h3><span class="when">이후</span></div>
+    <p>크기·투명도·핫존·단축키 설정 UI, 상태 영속화, macOS 빌드·서명·공증(또는 개인용 ad-hoc 서명) 및 권한 안내.</p>
+  </div>
+</div>
+<p><small>전체 페이즈·산출물·검증 게이트는 <a class="inl" href="roadmap.html">5 · 구현 로드맵</a> 참고.</small></p>
+
+<div class="callout warn">
+  <div class="ct">검증 원칙</div>
+  <p>스텔스 앱의 합격선은 "기능이 된다"가 아니라 "들키지 않는다"이다. 각 방어 기제는 실제 위협 시나리오로 검증한다 —
+     화면 공유 시 창이 보이지 않는가 / 다른 앱이 포커스인 상태에서 패닉 키가 즉시 듣는가 / Dock·Cmd-Tab에 안 뜨는가 / hover 밖 클릭이 아래로 통과하는가.
+     macOS 권한(필요 시)·동작은 버전에 따라 다를 수 있어 <a class="inl" href="architecture.html">아키텍처</a> 문서에서 실제 API로 확인한다.</p>
+</div>
+
+<div class="crosslinks">
+  <a href="feature-spec.html">1 · 기능 명세 <span class="ar">→</span></a>
+  <a href="architecture.html">2 · 아키텍처·동작 <span class="ar">→</span></a>
+  <a href="roadmap.html">4 · 구현 로드맵 <span class="ar">→</span></a>
+</div>
+<div class="footer">Peekaboo 기획 · 개요 · 인덱스 · 2026-06 · <a href="index.html">인덱스</a></div>
+
+</main>
+</div>
+</body>
+</html>

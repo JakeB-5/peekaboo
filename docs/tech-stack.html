@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>기술스택 · 구조 — Peekaboo 기획</title>
+<link rel="stylesheet" href="assets/doc.css"/>
+</head>
+<body>
+<div class="wrap">
+<nav class="side">
+  <div class="brand"><span class="mk">◆</span> Peekaboo 기획</div>
+  <div class="sub">Stealth Webtoon Overlay · Tauri v2 · macOS · 2026-06</div>
+  <div class="navgrp">문서</div>
+  <a href="index.html">개요 · 인덱스</a>
+  <a href="feature-spec.html">1 · 기능 명세</a>
+  <a href="screen-design.html">2 · 화면 설계</a>
+  <a href="architecture.html">3 · 아키텍처·동작</a>
+  <a href="tech-stack.html" class="active">4 · 기술스택·구조</a>
+  <a href="roadmap.html">5 · 구현 로드맵</a>
+  <div class="navgrp">이 문서</div>
+  <a class="lv2" href="#stack">스택 개요</a>
+  <a class="lv2" href="#structure">프로젝트 구조</a>
+  <a class="lv2" href="#config">tauri.conf.json 핵심</a>
+  <a class="lv2" href="#capabilities">권한(capabilities)</a>
+  <a class="lv2" href="#code">핵심 코드 골격</a>
+  <a class="lv2" href="#build">빌드 · 서명 · 배포</a>
+</nav>
+<main>
+
+<header class="hero">
+  <div class="eyebrow">Document 4 · Tech Stack &amp; Structure</div>
+  <h1>기술스택 · 구조 — Peekaboo</h1>
+  <p class="lead">구현에 바로 쓰는 스택·디렉터리·설정·권한·코드 골격. 모든 식별자(설정 키, Rust 메서드, 권한 ID, CLI)는
+    사전 검증값이다. 동작 설계의 근거는 <a class="inl" href="architecture.html">아키텍처</a>, 기능 우선순위는
+    <a class="inl" href="feature-spec.html">기능 명세</a>, 실행 순서는 <a class="inl" href="roadmap.html">로드맵</a> 참조.</p>
+  <div class="meta-row">
+    <span class="legend-chip"><span class="dot ld-progress"></span>Tauri v2 · Rust</span>
+    <span class="legend-chip"><span class="dot ld-done"></span>Frontend = TS + Vite</span>
+    <span class="legend-chip"><span class="dot ld-accent2"></span>plugin = global-shortcut</span>
+    <span class="legend-chip"><span class="dot ld-teal"></span>feature = macos-private-api</span>
+  </div>
+</header>
+
+<!-- ============================================================ -->
+<h2 id="stack"><span class="num">①</span>스택 개요</h2>
+<p class="section-intro">최소 의존성 원칙. 스텔스 기능은 Tauri 코어 + 공식 global-shortcut 플러그인만으로 충족되며, 프론트는 단순 표현이라 무거운 프레임워크가 필요 없다.</p>
+
+<div class="cards three">
+  <div class="item s-progress">
+    <div class="top"><h3>Tauri v2 코어</h3><span class="badge b-l">필수</span></div>
+    <div class="meta"><span><b>언어</b> Rust</span><span><b>WebView</b> 시스템(WKWebView)</span></div>
+    <p class="desc">창 속성 제어·IPC·번들의 본체. 투명 창을 위해 <code>macos-private-api</code> feature를 켠다.</p>
+    <p><small><code>tauri = { version = "2", features = ["macos-private-api"] }</code></small></p>
+  </div>
+  <div class="item s-accent2">
+    <div class="top"><h3>global-shortcut 플러그인</h3><span class="badge b-l">필수</span></div>
+    <div class="meta"><span><b>Rust</b> tauri-plugin-global-shortcut</span><span><b>JS</b> @tauri-apps/plugin-global-shortcut</span></div>
+    <p class="desc">패닉 단축키. 표준 조합은 권한 없이 비포커스에서도 발화.</p>
+    <p><small>추가: <code>cargo tauri add global-shortcut</code></small></p>
+  </div>
+  <div class="item s-done">
+    <div class="top"><h3>Frontend (TS + Vite)</h3><span class="badge b-p">표현</span></div>
+    <div class="meta"><span><b>역할</b> 콘텐츠·투명도·설정 UI</span></div>
+    <p class="desc">웹툰 렌더와 노출 애니메이션, 설정 패널. 상태는 Rust가 보유하므로 프론트는 이벤트 수신·표현만. vanilla 또는 경량 프레임워크.</p>
+    <p><small>선택: <code>tauri-plugin-store</code>(설정 영속화)</small></p>
+  </div>
+</div>
+
+<div class="callout">
+  <div class="ct">사전 준비</div>
+  <p>Rust 툴체인(<code>rustup</code>), Node.js(LTS), macOS의 Xcode Command Line Tools(<code>xcode-select --install</code>)가 필요하다. 스캐폴딩은 <code>npm create tauri-app@latest</code>.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="structure"><span class="num">②</span>프로젝트 구조</h2>
+<p class="section-intro">Tauri v2 표준 레이아웃. 프론트(<code>src/</code>)와 Rust 코어(<code>src-tauri/</code>)가 분리되고, 권한은 <code>capabilities/</code>에 선언한다.</p>
+
+<pre><code>peekaboo/
+├─ src/                      # 프론트엔드 (TS + Vite) — 표현 담당
+│  ├─ index.html
+│  ├─ main.ts                # 이벤트 수신 · 설정 UI · 명령 invoke
+│  └─ styles.css             # 투명도/노출 상태 CSS
+├─ src-tauri/
+│  ├─ Cargo.toml             # tauri(features: macos-private-api) + 플러그인
+│  ├─ tauri.conf.json        # 창 · 은폐 · 번들 설정
+│  ├─ build.rs
+│  ├─ capabilities/
+│  │  └─ default.json        # 권한 부여(window·global-shortcut)
+│  ├─ icons/
+│  └─ src/
+│     ├─ main.rs             # 엔트리 → lib::run()
+│     └─ lib.rs              # 플러그인 · 패닉 단축키 · 커서 폴링 · 상태머신
+├─ package.json
+└─ vite.config.ts</code></pre>
+
+<div class="callout warn">
+  <div class="ct">스텔스 관점의 구조 주의</div>
+  <p><code>productName</code>·번들 식별자·앱 이름·설정 파일 경로가 "흔적"이 된다. 배포물 이름은 눈에 띄지 않게 평범히 두고, 영속화 파일도 일반적인 위치/이름을 쓴다(예: 앱 식별자를 노골적으로 "Peekaboo"로 노출하지 않는 선택지 고려).</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="config"><span class="num">③</span>tauri.conf.json 핵심</h2>
+<p class="section-intro">오버레이·은폐의 거의 전부가 창/앱 설정에서 출발한다. 아래는 핵심 키만 추린 예시다.</p>
+
+<pre><code>{
+  "productName": "Peekaboo",
+  "identifier": "com.example.peekaboo",
+  "app": {
+    "macOSPrivateApi": true,                  // 투명 창에 필수(+ Cargo feature)
+    "macOS": { "activationPolicy": "accessory" }, // Dock/Cmd-Tab 숨김(런타임 대안도 있음)
+    "windows": [
+      {
+        "label": "main",
+        "url": "https://your-webtoon.example",
+        "width": 420, "height": 720,
+        "transparent": true,                   // 투명 배경
+        "decorations": false,                  // 무테
+        "shadow": false,                       // 그림자 제거
+        "alwaysOnTop": true,                   // 항상 위
+        "visibleOnAllWorkspaces": true,        // Spaces 전역
+        "skipTaskbar": true,
+        "contentProtected": true,              // 화면공유 비노출(※ macOS 15+ 무효)
+        "focus": false,                        // 시작 시 포커스 안 뺏음
+        "visible": false                       // 시작 시 숨김(단축키로 표시)
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "macOS": { "minimumSystemVersion": "13.0" }
+  }
+}</code></pre>
+
+<div class="callout">
+  <div class="ct">설정 메모</div>
+  <p><b>투명</b>은 <code>transparent:true</code>만으로 부족하고 <code>app.macOSPrivateApi:true</code> + Cargo <code>macos-private-api</code> feature가 함께 필요하다(App Store 부적격). <b>앱 은폐</b>의 <code>app.macOS.activationPolicy:"accessory"</code>는 선언적 방법이며, 동일 효과를 런타임 <code>set_activation_policy(ActivationPolicy::Accessory)</code>로도 줄 수 있다(코드 골격 참조). <b>contentProtected</b>는 켜두되 macOS 15+에서는 효과가 없음을 전제로 한다. 위 예시의 <code>//</code> 주석은 설명용이며, 실제 <code>tauri.conf.json</code>(JSON)에는 주석이 허용되지 않으므로 제거한다.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="capabilities"><span class="num">④</span>권한 (capabilities)</h2>
+<p class="section-intro">Tauri v2는 명령 호출 권한을 <code>capabilities/*.json</code>에서 창에 부여한다. 이 권한은 <b>JS↔Rust IPC를 게이팅</b>할 뿐, macOS OS 권한과는 무관하다(글로벌 단축키는 별도 OS 권한 불필요).</p>
+
+<pre><code>// src-tauri/capabilities/default.json
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Peekaboo capability set",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-cursor-position",
+    "core:window:allow-set-content-protected",
+    "core:window:allow-set-focus",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-is-registered"
+  ]
+}</code></pre>
+<p class="muted"><small>※ 첫 줄의 <code>// src-tauri/...</code> 주석은 파일 경로 표시용 — 실제 JSON 파일엔 넣지 않는다.</small></p>
+
+<div class="tbl-wrap">
+<table>
+  <thead><tr><th>권한 식별자</th><th>용도</th></tr></thead>
+  <tbody>
+    <tr><td><code>core:window:allow-set-ignore-cursor-events</code></td><td>클릭 통과 토글(Hover-Reveal)</td></tr>
+    <tr><td><code>core:window:allow-cursor-position</code></td><td>커서 위치 폴링(핫존 히트테스트)</td></tr>
+    <tr><td><code>core:window:allow-set-content-protected</code></td><td>화면공유 비노출(보조)</td></tr>
+    <tr><td><code>core:window:allow-set-always-on-top</code></td><td>항상 위 토글</td></tr>
+    <tr><td><code>core:window:allow-set-focus</code></td><td>Accessory 온디맨드 포커스</td></tr>
+    <tr><td><code>core:window:allow-hide</code> · <code>allow-show</code></td><td>패닉 숨김 / 복귀</td></tr>
+    <tr><td><code>global-shortcut:allow-register</code> 외</td><td>패닉 단축키 등록/해제(기본 비활성 → 명시 필요)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="code"><span class="num">⑤</span>핵심 코드 골격</h2>
+<p class="section-intro">스텔스 본체(Rust)와 표현(프론트)의 최소 골격. 실제 구현 시 에러 처리·설정 주입을 더한다.</p>
+
+<h3>Rust — 플러그인 · 패닉 단축키 · 앱 은폐 (src-tauri/src/lib.rs)</h3>
+<pre><code>use tauri::{Manager, ActivationPolicy};
+use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState, GlobalShortcutExt};
+
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        if let Some(win) = app.get_webview_window("main") {
+                            // 패닉 토글: Rust 핸들러에서 직접 → 저지연
+                            if win.is_visible().unwrap_or(false) {
+                                let _ = win.hide();
+                            } else {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                            }
+                        }
+                    }
+                })
+                .build(),
+        )
+        .setup(|app| {
+            // Dock/Cmd-Tab 숨김 (선언적 설정 대신/병행 런타임 적용)
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(ActivationPolicy::Accessory);
+
+            // 패닉 단축키 — 일반 조합(미디어키 금지 → macOS 권한 불필요)
+            let panic_key = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyH);
+            app.global_shortcut().register(panic_key)?;
+
+            // 커서 폴링 루프 시작
+            spawn_hover_loop(app.get_webview_window("main").unwrap());
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running Peekaboo");
+}</code></pre>
+
+<h3>Rust — Hover 커서 폴링 루프</h3>
+<pre><code>use std::{thread, time::Duration};
+use tauri::{Emitter, WebviewWindow};
+
+fn spawn_hover_loop(win: WebviewWindow) {
+    thread::spawn(move || {
+        let mut inside_prev = false;
+        loop {
+            if let Ok(pos) = win.cursor_position() {            // 데스크톱 절대좌표(클릭통과 무관)
+                let inside = hotzone_contains(&amp;win, pos);       // outer_position()+inner_size()로 rect 계산
+                if inside != inside_prev {                      // 엣지에서만 토글
+                    let _ = win.set_ignore_cursor_events(!inside);
+                    let _ = win.emit(
+                        "reveal-state-changed",
+                        if inside { "revealed" } else { "ghost" },
+                    );
+                    inside_prev = inside;
+                }
+            }
+            thread::sleep(Duration::from_millis(40));           // ~25fps 폴링
+        }
+    });
+}</code></pre>
+
+<h3>Frontend — 상태 수신 · 표현 동기화 (src/main.ts + styles.css)</h3>
+<pre><code>import { listen } from "@tauri-apps/api/event";
+
+const viewer = document.getElementById("viewer")!;
+// Rust 상태머신이 보낸 전이를 받아 표현만 바꾼다
+listen&lt;string&gt;("reveal-state-changed", (e) =&gt; {
+  viewer.dataset.state = e.payload;   // "ghost" | "revealed" | "hidden"
+});</code></pre>
+<pre><code>/* styles.css — 투명창 위 콘텐츠 불투명도로 노출 제어 */
+#viewer { transition: opacity .12s ease; }
+#viewer[data-state="ghost"]    { opacity: .08; }  /* 평소 — 거의 투명 */
+#viewer[data-state="revealed"] { opacity: 1;   }  /* 호버 — 또렷 */
+#viewer[data-state="hidden"]   { opacity: 0;   }</code></pre>
+
+<div class="callout warn">
+  <div class="ct">구현 함정</div>
+  <p>① 글로벌 단축키 플러그인을 <b>이중 초기화</b>(자동 빌더 라인 + 수동 setup)하면 <code>Invalid argument (os error 22)</code> 패닉 — 1회만 등록. ② 단축키는 <b>미디어키 금지</b>(CGEventTap → 손쉬운사용 권한 유발). ③ <code>cursor_position()</code>은 desktop 전용이며, <code>emit</code>은 <code>tauri::Emitter</code> 트레이트 import가 필요. ④ Accessory에서 입력 받으려면 <code>set_focus()</code> 필수.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="build"><span class="num">⑥</span>빌드 · 서명 · 배포</h2>
+<p class="section-intro">개인용(미서명)과 배포용(서명·공증)을 구분한다. Peekaboo는 본질적으로 개인 도구이므로 미서명 경로가 현실적이다.</p>
+
+<pre><code># 사전 준비
+rustup default stable
+xcode-select --install
+
+# 스캐폴딩 & 플러그인
+npm create tauri-app@latest peekaboo
+cargo tauri add global-shortcut      # Rust + JS + 권한 항목 추가
+
+# 개발 / 빌드
+npm run tauri dev
+npm run tauri build                  # → src-tauri/target/release/bundle (.app / .dmg)
+
+# 개인용 미서명 실행 — Gatekeeper 격리 속성 제거
+xattr -dr com.apple.quarantine "Peekaboo.app"</code></pre>
+
+<div class="wg">
+  <div class="col win">
+    <h4>개인용 (권장 경로)</h4>
+    <ul>
+      <li>미서명 또는 ad-hoc 서명으로 충분 — 본인 머신에서 실행.</li>
+      <li>Gatekeeper 경고는 <code>xattr -dr com.apple.quarantine</code> 또는 우클릭→열기로 우회.</li>
+      <li>Apple Developer 계정·공증 불필요 → 비용·흔적 최소.</li>
+    </ul>
+  </div>
+  <div class="col gap">
+    <h4>배포용 (선택)</h4>
+    <ul>
+      <li>Developer ID 서명: <code>bundle.macOS.signingIdentity</code> + 하드닝/entitlements.</li>
+      <li>공증(notarization): Apple ID 또는 API 키 환경변수로 <code>tauri build</code> 시 처리.</li>
+      <li><b>주의</b> <code>macos-private-api</code> 사용으로 <b>App Store 배포는 불가</b>.</li>
+    </ul>
+  </div>
+</div>
+
+<p class="muted"><small>※ 서명·공증의 구체 환경변수/필드는 Tauri 버전에 따라 다를 수 있어 배포 시 공식 문서로 재확인한다(<b>확인필요</b>). 개인용 미서명 경로는 영향 없음.</small></p>
+
+<div class="crosslinks">
+  <a href="architecture.html"><span class="ar">←</span> 아키텍처·동작</a>
+  <a href="roadmap.html">구현 로드맵 <span class="ar">→</span></a>
+  <a href="index.html">개요·인덱스 <span class="ar">→</span></a>
+</div>
+<div class="footer">Peekaboo 기획 · 기술스택·구조 · 2026-06 · <a href="index.html">인덱스</a></div>
+
+</main>
+</div>
+</body>
+</html>

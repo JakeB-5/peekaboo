@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>구현 로드맵 — Peekaboo 기획</title>
+<link rel="stylesheet" href="assets/doc.css"/>
+</head>
+<body>
+<div class="wrap">
+<nav class="side">
+  <div class="brand"><span class="mk">◆</span> Peekaboo 기획</div>
+  <div class="sub">Stealth Webtoon Overlay · Tauri v2 · macOS · 2026-06</div>
+  <div class="navgrp">문서</div>
+  <a href="index.html">개요 · 인덱스</a>
+  <a href="feature-spec.html">1 · 기능 명세</a>
+  <a href="screen-design.html">2 · 화면 설계</a>
+  <a href="architecture.html">3 · 아키텍처·동작</a>
+  <a href="tech-stack.html">4 · 기술스택·구조</a>
+  <a href="roadmap.html" class="active">5 · 구현 로드맵</a>
+  <div class="navgrp">이 문서</div>
+  <a class="lv2" href="#phases">페이즈 타임라인</a>
+  <a class="lv2" href="#gates">검증 게이트</a>
+  <a class="lv2" href="#risks">리스크 레지스터</a>
+  <a class="lv2" href="#open">미결정 사항</a>
+</nav>
+<main>
+
+<header class="hero">
+  <div class="eyebrow">Document 5 · Implementation Roadmap</div>
+  <h1>구현 로드맵 — Peekaboo</h1>
+  <p class="lead">스캐폴딩부터 배포까지 5개 페이즈로 나눈다. 각 페이즈는 <b>산출물</b>·<b>검증 게이트</b>(실제 위협 시나리오 통과)·<b>리스크</b>를 갖는다.
+    핵심 원칙은 "<b>띄우고 즉시 숨긴다</b>"를 가장 먼저(MVP) 동작시키고, 스텔스를 단계적으로 쌓는 것이다.
+    기능 정의는 <a class="inl" href="feature-spec.html">기능 명세</a>, 동작 근거는 <a class="inl" href="architecture.html">아키텍처</a> 참조.</p>
+  <div class="meta-row">
+    <span class="legend-chip"><span class="dot ld-done"></span>지금 — Phase 0–1</span>
+    <span class="legend-chip"><span class="dot ld-deferred"></span>다음 — Phase 2–3</span>
+    <span class="legend-chip"><span class="dot ld-progress"></span>이후 — Phase 4</span>
+    <span class="legend-chip"><span class="dot ld-blocked"></span>주의 — content protection 리스크</span>
+  </div>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><div class="v accent2">5</div><div class="k">페이즈</div><div class="note">스캐폴딩 → 배포</div></div>
+  <div class="kpi"><div class="v green">P1</div><div class="k">MVP 게이트</div><div class="note">"띄우고 즉시 숨긴다" 동작</div></div>
+  <div class="kpi"><div class="v amber">P2</div><div class="k">스텔스 게이트</div><div class="note">hover-reveal + 클릭통과</div></div>
+  <div class="kpi"><div class="v rose">1</div><div class="k">확정 리스크</div><div class="note">화면공유 비노출 macOS 15+ 불가</div></div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="phases"><span class="num">①</span>페이즈 타임라인</h2>
+<p class="section-intro">각 페이즈는 이전 페이즈의 검증 게이트를 통과해야 다음으로 넘어간다. 전역 정책(단계별 최대 5파일, 승인 후 진행)에 맞춰 페이즈를 잘게 쪼갰다.</p>
+
+<div class="timeline">
+  <div class="phase p-now">
+    <div class="ph"><h3>Phase 0 · 스캐폴딩</h3><span class="when">지금</span></div>
+    <p><b>산출물</b> — <code>npm create tauri-app</code>로 프로젝트 생성, <code>cargo tauri add global-shortcut</code>, <code>macos-private-api</code> feature 활성, <code>capabilities/default.json</code>에 필요한 권한 선언. 빈 투명 창이 떠서 <code>tauri dev</code>가 도는 상태.</p>
+    <p><b>검증 게이트</b> — 투명·무테 창이 화면에 뜨고(배경 비침), 콘솔 에러 없음.</p>
+    <p><small><b>리스크</b> 투명이 안 보이면 <code>macOSPrivateApi</code>+feature 누락 의심.</small></p>
+  </div>
+
+  <div class="phase p-now">
+    <div class="ph"><h3>Phase 1 · MVP — 오버레이 + 패닉</h3><span class="when">지금</span></div>
+    <p><b>산출물</b> — 웹툰 URL 로드, 항상-위/크기·위치, 그리고 <b>패닉 글로벌 단축키(토글 hide/show)</b>. 투명도 기본값 적용. "보고 → 즉시 숨긴다" 수직 경로 완성.</p>
+    <p><b>검증 게이트</b> — <b>다른 앱이 포커스인 상태</b>에서 패닉 키를 누르면 창이 즉시 사라지고, 다시 누르면 보던 위치로 복귀.</p>
+    <p><small><b>리스크</b> 플러그인 이중 초기화(os error 22) · 미디어키 선택 금지.</small></p>
+  </div>
+
+  <div class="phase p-next">
+    <div class="ph"><h3>Phase 2 · 스텔스 본체 — Hover-Reveal</h3><span class="when">다음</span></div>
+    <p><b>산출물</b> — 클릭 통과(<code>set_ignore_cursor_events</code>) + 커서 폴링 루프(<code>cursor_position</code>)로 핫존 hover-reveal, 평소/호버 투명도 분리, 노출/패닉 상태 머신(Rust 단일 소스) 구현.</p>
+    <p><b>검증 게이트</b> — 핫존 밖 클릭이 아래 앱으로 통과되고, 핫존에 커서를 올리면 또렷해지며, 폴링 CPU 사용이 수용 범위.</p>
+    <p><small><b>리스크</b> 폴링 비용 · 핫존 rect 좌표(스케일/멀티모니터) 계산 정확도.</small></p>
+  </div>
+
+  <div class="phase p-next">
+    <div class="ph"><h3>Phase 3 · 은폐 강화</h3><span class="when">다음</span></div>
+    <p><b>산출물</b> — Accessory(Dock·Cmd-Tab 숨김) + <code>set_focus()</code> 온디맨드 포커스, Spaces 전역(<code>visibleOnAllWorkspaces</code>), content protection 적용 <b>및 한계 실측</b>(macOS 버전별 화면공유 노출 확인).</p>
+    <p><b>검증 게이트</b> — Dock/Cmd-Tab에 안 뜨고, 입력 필요 시 포커스가 잡힘. content protection이 <b>현 macOS에서 화면공유를 막는지/못 막는지</b> 실측 기록.</p>
+    <p><small><b>리스크</b> <b>content protection macOS 15+ 무효(확정)</b> · Accessory 포커스 마찰 · 풀스크린 위 부유 한계.</small></p>
+  </div>
+
+  <div class="phase p-later">
+    <div class="ph"><h3>Phase 4 · 폴리시 + 배포</h3><span class="when">이후</span></div>
+    <p><b>산출물</b> — 설정 UI(크기·투명도·핫존·단축키·북마크), 상태 영속화(store/fs), 마지막 위치 복원, macOS 빌드·개인용 미서명 실행 경로 정리(필요 시 서명·공증).</p>
+    <p><b>검증 게이트</b> — 재실행 시 설정·북마크·마지막 위치 복원, 빌드 산출물이 본인 머신에서 정상 실행.</p>
+    <p><small><b>리스크</b> 서명/공증 환경변수 변동(확인필요) · 영속화 파일이 흔적이 되지 않도록.</small></p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="gates"><span class="num">②</span>검증 게이트 (위협 시나리오)</h2>
+<p class="section-intro">스텔스 앱은 "기능이 된다"가 아니라 "들키지 않는다"가 합격선이다. 각 게이트는 실제 위협 상황을 흉내 내어 통과 여부를 판정한다.</p>
+
+<div class="tbl-wrap">
+<table>
+  <thead><tr><th>게이트</th><th>시나리오</th><th>판정 기준</th><th class="c">페이즈</th></tr></thead>
+  <tbody>
+    <tr><td><b>즉시 탈출</b></td><td>다른 앱에서 작업 중 패닉 키 입력</td><td>창이 체감 지연 없이 사라짐</td><td class="c"><span class="badge b-l">P1</span></td></tr>
+    <tr><td><b>복귀 무결성</b></td><td>패닉 후 다시 표시</td><td>보던 위치·스크롤 유지</td><td class="c"><span class="badge b-l">P1</span></td></tr>
+    <tr><td><b>클릭 통과</b></td><td>핫존 밖에서 아래 앱 클릭</td><td>클릭이 아래로 통과</td><td class="c"><span class="badge b-p">P2</span></td></tr>
+    <tr><td><b>호버 노출</b></td><td>핫존에 커서 진입/이탈</td><td>또렷↔고스트 전환</td><td class="c"><span class="badge b-p">P2</span></td></tr>
+    <tr><td><b>앱 은폐</b></td><td>Dock·Cmd-Tab·메뉴바 확인</td><td>어디에도 안 보임</td><td class="c"><span class="badge b-p">P3</span></td></tr>
+    <tr><td><b>화면공유</b></td><td>Zoom/Meet/QuickTime로 화면 공유</td><td class="c"><span class="partial">△ 버전 의존</span> — macOS 15+는 노출됨(기록)</td><td class="c"><span class="badge b-p">P3</span></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout danger">
+  <div class="ct">화면공유 게이트는 "통과"가 아니라 "기록"이다</div>
+  <p>content protection이 macOS 15+에서 동작하지 않음은 <b>확정 사실</b>(<a class="inl" href="architecture.html">근거</a>)이므로, 이 게이트의 목적은 "막는다"가 아니라 <b>"어느 환경에서 노출되는지 정확히 알고 사용자에게 알린다"</b>이다. 실질 방어는 P1의 패닉 키(화면 공유 전/중 사전 숨김)로 한다.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="risks"><span class="num">③</span>리스크 레지스터</h2>
+<p class="section-intro">영향·가능성과 완화책. 1번이 가장 중대하며 제품 메시징에 직접 영향을 준다.</p>
+
+<div class="tbl-wrap">
+<table>
+  <thead><tr><th>#</th><th>리스크</th><th class="c">영향</th><th class="c">가능성</th><th>완화책</th></tr></thead>
+  <tbody>
+    <tr>
+      <td class="num">1</td>
+      <td><b>content protection이 macOS 15+에서 화면공유를 못 막음</b></td>
+      <td class="c"><span class="badge b-high">높음</span></td>
+      <td class="c"><span class="no">확정</span></td>
+      <td><small>패닉 키 사전 숨김 워크플로를 1차 방어로 · 사용자에게 한계 명시 · (v2) 화면공유 시작 감지 시 자동 패닉 가능성 조사</small></td>
+    </tr>
+    <tr>
+      <td class="num">2</td>
+      <td>Accessory 앱의 포커스 마찰(<code>show()</code>만으론 입력 안 됨)</td>
+      <td class="c"><span class="badge b-med">중간</span></td>
+      <td class="c"><span class="partial">중</span></td>
+      <td><small>입력 필요 시 <code>set_focus()</code> 명시 · 거슬리면 NSPanel 검토(아래 5)</small></td>
+    </tr>
+    <tr>
+      <td class="num">3</td>
+      <td>웹툰 사이트의 로그인/임베드 차단</td>
+      <td class="c"><span class="badge b-med">중간</span></td>
+      <td class="c"><span class="partial">중</span></td>
+      <td><small>메인 윈도우 내비게이션으로 로드 · 자주 보는 사이트별 사전 검증 · 안 되면 대체 뷰어</small></td>
+    </tr>
+    <tr>
+      <td class="num">4</td>
+      <td>커서 폴링 CPU 부담</td>
+      <td class="c"><span class="badge b-low">낮음</span></td>
+      <td class="c"><span class="partial">중</span></td>
+      <td><small>40ms 주기·엣지 트리거 · 정지 시 적응형 주기 · 핫존만 통과해제로 폴링 축소</small></td>
+    </tr>
+    <tr>
+      <td class="num">5</td>
+      <td>풀스크린 위 부유·비활성 부유엔 NSPanel 필요(스톡 미노출)</td>
+      <td class="c"><span class="badge b-med">중간</span></td>
+      <td class="c"><span class="partial">낮음~중</span></td>
+      <td><small>우선 스톡 창 + <code>set_focus</code>로 진행 · 실측 불편 시 objc2/커뮤니티 플러그인 도입(비용 인지)</small></td>
+    </tr>
+    <tr>
+      <td class="num">6</td>
+      <td>투명=<code>macos-private-api</code> → App Store 배포 불가</td>
+      <td class="c"><span class="badge b-low">낮음</span></td>
+      <td class="c"><span class="no">확정</span></td>
+      <td><small>개인 도구라 영향 없음 — 직접 배포/미서명 경로</small></td>
+    </tr>
+    <tr>
+      <td class="num">7</td>
+      <td>구현 함정(이중 초기화·미디어키·import 누락)</td>
+      <td class="c"><span class="badge b-low">낮음</span></td>
+      <td class="c"><span class="partial">낮음</span></td>
+      <td><small>단일 등록 · 일반 단축키 조합 · <code>Emitter</code> 등 트레이트 import 체크</small></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="open"><span class="num">④</span>미결정 사항</h2>
+<p class="section-intro">진행 중 결정이 필요한 분기점. 대부분 "실측 후 결정"으로 미뤄도 되는 항목이다.</p>
+
+<div class="cards two">
+  <div class="item s-progress">
+    <div class="top"><h3>NSPanel 도입 여부</h3><span class="badge b-p">P3 결정</span></div>
+    <p class="desc">스톡 창 + <code>set_focus()</code>의 "활성 전환"이 실사용에서 거슬리는지 실측한 뒤, 거슬리면 NSPanel(<code>nonactivatingPanel</code>) 도입. objc2/커뮤니티 플러그인 비용 발생.</p>
+  </div>
+  <div class="item s-blocked">
+    <div class="top"><h3>macOS 15+ 화면공유 대응</h3><span class="badge b-med">조사</span></div>
+    <p class="desc">content protection이 무효인 환경에서, "화면 공유 시작 감지 → 자동 패닉"이 신뢰성 있게 가능한지 조사(v2). 불가하면 사용자 안내·수동 패닉 원칙 유지.</p>
+  </div>
+  <div class="item s-accent2">
+    <div class="top"><h3>프론트 프레임워크</h3><span class="badge b-l">P0 결정</span></div>
+    <p class="desc">표현이 단순하므로 vanilla TS로 충분할 수 있음 vs 설정 UI 편의를 위해 경량 프레임워크. 스캐폴드 시 확정.</p>
+  </div>
+  <div class="item s-accent2">
+    <div class="top"><h3>영속화 수단</h3><span class="badge b-p">P4 결정</span></div>
+    <p class="desc"><code>tauri-plugin-store</code>(간단 KV) vs <code>fs</code> 직접. 흔적 최소화(파일 위치/이름) 관점도 함께 고려.</p>
+  </div>
+</div>
+
+<hr/>
+
+<div class="panel">
+  <h4>한 줄 요약</h4>
+  <p>P1에서 "<b>띄우고 즉시 숨긴다</b>"를 먼저 완성(가장 쉽고 가장 가치 큼) → P2에서 클릭통과+hover-reveal로 평소 은닉 → P3에서 앱 은폐와 화면공유 <b>한계 실측</b> → P4에서 설정·배포. <b>화면 공유 비노출은 보장하지 못한다</b>는 사실을 처음부터 설계·메시징에 반영하고, 그 자리를 패닉 키가 메운다.</p>
+</div>
+
+<div class="crosslinks">
+  <a href="tech-stack.html"><span class="ar">←</span> 기술스택·구조</a>
+  <a href="index.html">개요·인덱스 <span class="ar">→</span></a>
+  <a href="feature-spec.html">기능 명세 <span class="ar">→</span></a>
+</div>
+<div class="footer">Peekaboo 기획 · 구현 로드맵 · 2026-06 · <a href="index.html">인덱스</a></div>
+
+</main>
+</div>
+</body>
+</html>

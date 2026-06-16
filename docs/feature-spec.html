@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>기능 명세 — Peekaboo 기획</title>
+<link rel="stylesheet" href="assets/doc.css"/>
+</head>
+<body>
+<div class="wrap">
+<nav class="side">
+  <div class="brand"><span class="mk">◆</span> Peekaboo 기획</div>
+  <div class="sub">Stealth Webtoon Overlay · Tauri v2 · macOS · 2026-06</div>
+  <div class="navgrp">문서</div>
+  <a href="index.html">개요 · 인덱스</a>
+  <a href="feature-spec.html" class="active">1 · 기능 명세</a>
+  <a href="screen-design.html">2 · 화면 설계</a>
+  <a href="architecture.html">3 · 아키텍처·동작</a>
+  <a href="tech-stack.html">4 · 기술스택·구조</a>
+  <a href="roadmap.html">5 · 구현 로드맵</a>
+  <div class="navgrp">이 문서</div>
+  <a class="lv2" href="#map">기능 맵 개요</a>
+  <a class="lv2" href="#overlay">오버레이 창 · 뷰어</a>
+  <a class="lv2" href="#panic">패닉 탈출</a>
+  <a class="lv2" href="#reveal">투명도 · Hover-Reveal</a>
+  <a class="lv2" href="#stealth">화면공유 비노출 · 앱 은폐</a>
+  <a class="lv2" href="#settings">설정 · 영속화</a>
+  <a class="lv2" href="#v2">확장(v2)</a>
+</nav>
+<main>
+
+<header class="hero">
+  <div class="eyebrow">Document 1 · Feature Specification</div>
+  <h1>기능 명세 — Peekaboo</h1>
+  <p class="lead">Peekaboo의 기능을 7개 영역으로 분해하고, 각 기능을 <b>MVP / v1 / v2</b> 우선순위로 분류한다.
+    항목마다 <b>핵심 Tauri API</b>(실제 구현에 쓰는 정확한 메서드·설정·권한)와 <b>한계·격차</b>를 함께 명시한다.
+    모든 API 이름은 사전 검증을 거친 값이며, 특히 화면 공유 비노출의 macOS 15+ 한계는 정직하게 표기한다.
+    동작 설계·상태 머신은 <a class="inl" href="architecture.html">아키텍처</a>, 정확한 코드·구조는 <a class="inl" href="tech-stack.html">기술스택·구조</a> 참조.</p>
+  <div class="meta-row">
+    <span class="legend-chip"><span class="dot ld-progress"></span>MVP — 최소 동작</span>
+    <span class="legend-chip"><span class="dot ld-accent2"></span>v1 — 스텔스 완성</span>
+    <span class="legend-chip"><span class="dot ld-deferred"></span>v2 — 편의·확장</span>
+    <span class="legend-chip"><span class="dot ld-teal"></span>스텔스 핵심</span>
+    <span class="legend-chip"><span class="dot ld-blocked"></span>한계 있음</span>
+  </div>
+</header>
+
+<!-- ============================================================ -->
+<h2 id="map"><span class="num">①</span>기능 맵 개요</h2>
+<p class="section-intro">Peekaboo를 7개 기능 영역으로 분해한다. "스텔스 핵심"으로 표시된 영역(패닉 탈출·Hover-Reveal·앱 은폐)이 제품 가치의 중심이며, 나머지는 이를 지탱한다. MVP는 "띄우고 → 즉시 숨긴다" 직선 경로에 집중한다.</p>
+
+<div class="kpis">
+  <div class="kpi"><div class="v accent">7</div><div class="k">기능 영역</div><div class="note">오버레이·뷰어·패닉·투명/호버·스텔스·설정·확장</div></div>
+  <div class="kpi"><div class="v green">4</div><div class="k">MVP 기능</div><div class="note">오버레이창 · 뷰어로드 · 패닉키 · 투명도</div></div>
+  <div class="kpi"><div class="v accent2">3</div><div class="k">스텔스 핵심</div><div class="note">패닉 탈출 · Hover-Reveal · 앱 은폐</div></div>
+  <div class="kpi"><div class="v rose">1</div><div class="k">한계 영역</div><div class="note">화면공유 비노출(macOS 15+ 불가)</div></div>
+</div>
+
+<div class="tbl-wrap">
+<table>
+  <thead>
+    <tr><th>#</th><th>기능</th><th>우선순위</th><th class="c">스텔스 핵심</th><th>핵심 Tauri API</th><th>한계 / 비고</th></tr>
+  </thead>
+  <tbody>
+    <tr><td class="num">②</td><td><a href="#overlay">투명 오버레이 창</a></td><td><span class="badge b-l">MVP</span></td><td class="c"><span class="partial">△</span></td><td><code>transparent</code>·<code>decorations:false</code>·<code>alwaysOnTop</code> + <code>macOSPrivateApi</code></td><td><small>투명은 <code>macos-private-api</code> feature 필요(App Store 부적격)</small></td></tr>
+    <tr><td class="num">②</td><td><a href="#overlay">웹툰 뷰어 로드</a></td><td><span class="badge b-l">MVP</span></td><td class="c"><span class="no">—</span></td><td>WebView URL 내비게이션 + 북마크</td><td><small>로그인/임베드 차단 사이트는 별도 처리</small></td></tr>
+    <tr><td class="num">③</td><td><a href="#panic">패닉 탈출(글로벌 단축키)</a></td><td><span class="badge b-l">MVP</span></td><td class="c"><span class="yes">★</span></td><td><code>global-shortcut</code> + <code>hide()</code>/<code>show()</code></td><td><small>권한 불필요(일반 조합). 미디어키 금지</small></td></tr>
+    <tr><td class="num">④</td><td><a href="#reveal">투명도 조절</a></td><td><span class="badge b-l">MVP</span></td><td class="c"><span class="partial">△</span></td><td>투명창 위 CSS alpha</td><td><small>창 alpha 직접 API 미확정 — CSS로 처리</small></td></tr>
+    <tr><td class="num">④</td><td><a href="#reveal">Hover-Reveal(클릭통과)</a></td><td><span class="badge b-p">v1</span></td><td class="c"><span class="yes">★</span></td><td><code>set_ignore_cursor_events</code> + <code>cursor_position</code> 폴링</td><td><small>DOM/네이티브 hover는 클릭통과 시 죽음 → 폴링 필수</small></td></tr>
+    <tr><td class="num">⑤</td><td><a href="#stealth">화면공유 비노출</a></td><td><span class="badge b-p">v1</span></td><td class="c"><span class="partial">△</span></td><td><code>setContentProtected(true)</code></td><td><small><b>macOS 15+에서 무효</b>(ScreenCaptureKit 무시)</small></td></tr>
+    <tr><td class="num">⑤</td><td><a href="#stealth">앱 은폐(Dock/Cmd-Tab)</a></td><td><span class="badge b-p">v1</span></td><td class="c"><span class="yes">★</span></td><td><code>activationPolicy:"accessory"</code></td><td><small>Accessory 앱은 <code>set_focus()</code>로 온디맨드 포커스</small></td></tr>
+    <tr><td class="num">⑥</td><td><a href="#settings">설정 · 상태 영속화</a></td><td><span class="badge b-p">v1</span></td><td class="c"><span class="no">—</span></td><td>store/fs 플러그인 + 설정 UI</td><td><small>크기·투명도·핫존·단축키 저장</small></td></tr>
+    <tr><td class="num">⑦</td><td><a href="#v2">고급(다중 핫존·자동패닉 등)</a></td><td><span class="badge b-med">v2</span></td><td class="c"><span class="no">—</span></td><td>위 기능 조합·확장</td><td><small>편의 기능 — 후순위</small></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout rec">
+  <div class="ct">읽는 법</div>
+  <p><span class="badge b-l">MVP</span>·<span class="badge b-p">v1</span>·<span class="badge b-med">v2</span> 는 출시 우선순위, <span class="yes">★</span> 는 스텔스 핵심 기능이다. <b>핵심 Tauri API</b>는 사전 검증된 실제 메서드/설정/권한 식별자이며, <b>한계</b>는 구현 시 반드시 인지해야 하는 제약이다. 가장 중요한 한계는 ⑤의 "화면공유 비노출이 macOS 15+에서 동작하지 않음"이다.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="overlay"><span class="num">②</span>투명 오버레이 창 · 뷰어</h2>
+<p class="section-intro">웹툰 페이지를 원하는 크기·위치의 떠 있는 투명 창으로 띄우는, 모든 기능의 토대. 무테(無테)·그림자 없음·항상 위·작업표시줄 비표시로 "창처럼 보이지 않는 창"을 만든다.</p>
+
+<div class="cards two">
+  <div class="item s-progress">
+    <div class="top"><h3>투명 · 무테 · 항상-위 창</h3><span class="badge b-l">MVP</span></div>
+    <div class="meta"><span><b>레벨</b> always-on-top</span><span><b>장식</b> 무테</span></div>
+    <p class="desc">제목표시줄·테두리·그림자를 모두 제거하고 배경을 투명하게 만들어, 콘텐츠만 화면에 얹힌 듯 보이게 한다. 다른 앱 위에 항상 떠 있다.</p>
+    <p><small><b>API</b> 설정 <code>app.windows[]</code>: <code>transparent:true</code> · <code>decorations:false</code> · <code>shadow:false</code> · <code>alwaysOnTop:true</code> · <code>skipTaskbar:true</code>. 런타임 <code>WebviewWindow::set_always_on_top(true)</code></small></p>
+    <p><small><b>한계</b> macOS 투명은 <code>app.macOSPrivateApi:true</code> + Cargo <code>macos-private-api</code> feature 필수 → <b>App Store 배포 부적격</b>(개인 배포는 무관)</small></p>
+  </div>
+  <div class="item s-progress">
+    <div class="top"><h3>크기 · 위치 조절</h3><span class="badge b-l">MVP</span></div>
+    <div class="meta"><span><b>이동</b> 드래그</span><span><b>리사이즈</b> 핸들/단축키</span></div>
+    <p class="desc">원하는 크기로 키우거나 줄이고, 화면 구석 등 원하는 위치로 옮긴다. 무테 창이므로 커스텀 드래그 영역을 둔다.</p>
+    <p><small><b>API</b> <code>set_size</code> / <code>set_position</code> / <code>start_dragging</code>, JS <code>getCurrentWindow().startDragging()</code> · CSS <code>data-tauri-drag-region</code></small></p>
+    <p><small><b>비고</b> 핫존(호버 감지 영역)과 드래그 영역의 좌표 정의를 일관되게 관리(④와 연동)</small></p>
+  </div>
+  <div class="item s-progress">
+    <div class="top"><h3>웹툰 뷰어 로드</h3><span class="badge b-l">MVP</span></div>
+    <div class="meta"><span><b>입력</b> URL</span><span><b>저장</b> 북마크</span></div>
+    <p class="desc">임의의 웹툰 URL을 창에 로드한다. 자주 보는 작품을 북마크로 저장하고 빠르게 전환한다.</p>
+    <p><small><b>API</b> 창 설정 <code>url</code>(원격 URL 허용) 또는 런타임 내비게이션. 북마크는 ⑥ 영속화에 저장</small></p>
+    <p><small><b>한계</b> 일부 사이트는 로그인·임베드 차단 가능 — 메인 윈도우 내비게이션으로 회피하되 사이트별 검증 필요(격차)</small></p>
+  </div>
+  <div class="item s-accent2">
+    <div class="top"><h3>Spaces 전역 표시</h3><span class="badge b-p">v1</span></div>
+    <div class="meta"><span><b>대상</b> 모든 데스크톱</span></div>
+    <p class="desc">macOS Spaces(가상 데스크톱)를 전환해도 따라오게 해, 작업 공간을 바꿔도 즉시 다시 볼 수 있다.</p>
+    <p><small><b>API</b> 설정 <code>visibleOnAllWorkspaces:true</code> / 런타임 <code>set_visible_on_all_workspaces(true)</code></small></p>
+    <p><small><b>비고</b> 풀스크린 앱 위 부유는 스톡 창으로 한계 — 필요 시 NSPanel 검토(<a class="inl" href="architecture.html">아키텍처</a> 참조)</small></p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="panic"><span class="num">③</span>패닉 탈출 <span class="badge b-teal" style="vertical-align:middle">스텔스 핵심</span></h2>
+<p class="section-intro">제품의 심장. 들킬 위기에 <b>전역 단축키 한 번으로 창이 즉시 사라진다</b> — 다른 앱이 포커스를 가진 상태(웹툰 창은 뒤에 있음)에서도 반드시 동작해야 한다. "기능"이 아니라 "반사신경"으로 느껴져야 한다.</p>
+
+<figure class="fig">
+  <div class="fig-title">패닉 단축키 경로</div>
+  <svg viewBox="0 0 840 170" role="img" aria-label="다른 앱이 포커스를 가진 상태에서 사용자가 전역 단축키를 누르면, OS의 Carbon RegisterEventHotKey가 비포커스 상태의 Peekaboo로 이벤트를 전달하고, Rust 핸들러가 창을 즉시 hide 하는 4단계 흐름.">
+    <defs>
+      <marker id="arwP" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#727a89"/></marker>
+    </defs>
+    <rect x="24" y="58" width="180" height="54" rx="8" fill="#1d212b" stroke="#6ea8fe" stroke-width="1.5"/>
+    <text x="114" y="80" class="t-ink" font-size="12.5" text-anchor="middle">단축키 입력</text>
+    <text x="114" y="98" font-size="10.5" text-anchor="middle" fill="#727a89">Cmd+Shift+H (전역)</text>
+
+    <rect x="244" y="58" width="180" height="54" rx="8" fill="#1d212b" stroke="#9d7bff" stroke-width="1.5"/>
+    <text x="334" y="80" class="t-ink" font-size="12.5" text-anchor="middle">OS 후킹</text>
+    <text x="334" y="98" font-size="10.5" text-anchor="middle" fill="#727a89">RegisterEventHotKey</text>
+
+    <rect x="464" y="58" width="180" height="54" rx="8" fill="#1d212b" stroke="#9d7bff" stroke-width="1.5"/>
+    <text x="554" y="80" class="t-ink" font-size="12.5" text-anchor="middle">Rust 핸들러</text>
+    <text x="554" y="98" font-size="10.5" text-anchor="middle" fill="#727a89">ShortcutState::Pressed</text>
+
+    <rect x="684" y="58" width="132" height="54" rx="8" fill="#1d212b" stroke="#5fd07a" stroke-width="1.5"/>
+    <text x="750" y="80" class="t-ink" font-size="12.5" text-anchor="middle">창 즉시 숨김</text>
+    <text x="750" y="98" font-size="10.5" text-anchor="middle" fill="#727a89">window.hide()</text>
+
+    <line x1="206" y1="85" x2="240" y2="85" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwP)"/>
+    <line x1="426" y1="85" x2="460" y2="85" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwP)"/>
+    <line x1="646" y1="85" x2="680" y2="85" stroke="#727a89" stroke-width="1.5" marker-end="url(#arwP)"/>
+
+    <text x="334" y="38" font-size="10.5" text-anchor="middle" fill="#727a89">Peekaboo가 비포커스여도 OS가 전달</text>
+  </svg>
+  <div class="fig-legend">
+    <span><i class="box cc-accent"></i> 입력</span>
+    <span><i class="box cc-accent2"></i> OS·코어 처리</span>
+    <span><i class="box cc-green"></i> 결과(은닉)</span>
+  </div>
+  <figcaption>표준 modifier+key 단축키는 Carbon <code>RegisterEventHotKey</code>로 OS가 중개하므로, Peekaboo가 포커스를 갖고 있지 않아도 발화한다. 핸들러는 Rust에서 곧장 <code>hide()</code>를 호출해 지연을 최소화한다.</figcaption>
+</figure>
+
+<div class="cards two">
+  <div class="item s-teal">
+    <div class="top"><h3>전역 패닉 단축키</h3><span class="badge b-l">MVP</span></div>
+    <div class="meta"><span><b>플러그인</b> global-shortcut</span><span><b>동작</b> 토글 hide/show</span></div>
+    <p class="desc">지정 단축키로 창을 즉시 숨기고, 다시 누르면 복귀한다. 포커스 여부와 무관하게 동작.</p>
+    <p><small><b>API</b> <code>tauri-plugin-global-shortcut</code> — Rust <code>Builder::new().with_handler(..).build()</code>, <code>app.global_shortcut().register(Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyH))</code>; 권한 <code>global-shortcut:allow-register</code></small></p>
+    <p><small><b>핵심</b> macOS <b>권한 불필요</b> — 표준 조합은 <code>RegisterEventHotKey</code> 사용(시스템 중개). 단 <b>미디어키 금지</b>(CGEventTap → 손쉬운사용 권한 필요)</small></p>
+  </div>
+  <div class="item s-teal">
+    <div class="top"><h3>즉시성 · 흔적 최소화</h3><span class="badge b-l">MVP</span></div>
+    <div class="meta"><span><b>지연</b> 최소</span><span><b>복귀</b> 상태 보존</span></div>
+    <p class="desc">숨김은 체감 지연이 없어야 하고, 복귀 시 보던 위치가 유지돼야 진짜 "탈출"이다. 숨김 시 화면에 잔상이 남지 않게 한다.</p>
+    <p><small><b>설계</b> 숨김 동작은 Rust 핸들러에서 직접 <code>window.hide()</code>(IPC 왕복 없이) — JS 경유보다 빠름. 복귀 위치/스크롤은 메모리 유지</small></p>
+    <p><small><b>주의</b> 플러그인 이중 초기화 시 <code>os error 22</code> 패닉 — 등록은 메인 스레드에서 1회만</small></p>
+  </div>
+</div>
+
+<div class="callout good">
+  <div class="ct">왜 이 기능이 가장 쉽고 가장 중요한가</div>
+  <p>패닉 단축키는 구현 난이도가 낮고(검증된 플러그인 + 권한 불필요), 제품 가치는 가장 크다. <b>MVP에서 가장 먼저 동작</b>시켜야 하는 기능이며, 화면 공유 비노출이 불완전한 macOS 15+ 환경에서는 사실상 <b>스텔스의 최후 방어선</b> 역할까지 겸한다(화면 공유 전에 미리 숨기기).</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="reveal"><span class="num">④</span>투명도 · Hover-Reveal <span class="badge b-teal" style="vertical-align:middle">스텔스 핵심</span></h2>
+<p class="section-intro">"평소엔 거의 안 보이고, 보려는 영역에 마우스를 올릴 때만 또렷해진다." 투명도로 평소 노출을 낮추고, hover-reveal로 필요할 때만 콘텐츠를 드러낸다. 단, 클릭 통과와 결합되면 hover 감지 방식이 통상적 방법과 달라진다.</p>
+
+<figure class="fig">
+  <div class="fig-title">노출 상태 스펙트럼</div>
+  <svg viewBox="0 0 840 200" role="img" aria-label="세 가지 노출 상태: 평소(거의 투명하고 클릭 통과), 핫존 호버(해당 영역만 또렷), 패닉(완전 숨김)을 좌에서 우로 보여주는 다이어그램.">
+    <!-- state 1: ghost -->
+    <text x="140" y="28" class="t-accent" font-size="12" text-anchor="middle">① 평소 — 고스트</text>
+    <rect x="60" y="44" width="160" height="110" rx="8" fill="#1d212b" stroke="#2a3038" stroke-width="1.5" opacity="0.35"/>
+    <text x="140" y="104" font-size="11" text-anchor="middle" fill="#727a89" opacity="0.6">거의 투명 · 클릭 통과</text>
+
+    <!-- state 2: hover reveal -->
+    <text x="420" y="28" class="t-accent" font-size="12" text-anchor="middle">② 핫존 호버 — 노출</text>
+    <rect x="340" y="44" width="160" height="110" rx="8" fill="#1d212b" stroke="#2a3038" stroke-width="1.5" opacity="0.4"/>
+    <rect x="372" y="70" width="96" height="62" rx="6" fill="#1d212b" stroke="#6ea8fe" stroke-width="2"/>
+    <text x="420" y="104" font-size="11" text-anchor="middle" class="t-ink">올린 영역만 또렷</text>
+    <circle cx="420" cy="101" r="4" fill="#f0b450"/>
+    <text x="420" y="150" font-size="10" text-anchor="middle" fill="#727a89">커서 위치 = 핫존 내부</text>
+
+    <!-- state 3: panic -->
+    <text x="700" y="28" class="t-accent" font-size="12" text-anchor="middle">③ 패닉 — 숨김</text>
+    <rect x="620" y="44" width="160" height="110" rx="8" fill="none" stroke="#2a3038" stroke-width="1.2" stroke-dasharray="5 4"/>
+    <text x="700" y="104" font-size="11" text-anchor="middle" fill="#727a89">완전히 사라짐</text>
+
+    <line x1="232" y1="99" x2="328" y2="99" stroke="#727a89" stroke-width="1.3" stroke-dasharray="4 3"/>
+    <text x="280" y="92" font-size="9.5" text-anchor="middle" fill="#727a89">호버</text>
+    <line x1="512" y1="99" x2="608" y2="99" stroke="#727a89" stroke-width="1.3" stroke-dasharray="4 3"/>
+    <text x="560" y="92" font-size="9.5" text-anchor="middle" fill="#727a89">패닉키</text>
+  </svg>
+  <figcaption>평소엔 낮은 불투명도 + 클릭 통과로 "유령"처럼 존재하고, 핫존에 커서가 들어오면 또렷해진다. 패닉 키는 어느 상태에서든 즉시 ③으로 보낸다. 상태 전이의 정식 정의는 <a class="inl" href="architecture.html">아키텍처 상태 머신</a>에 있다.</figcaption>
+</figure>
+
+<div class="cards two">
+  <div class="item s-progress">
+    <div class="top"><h3>투명도 조절</h3><span class="badge b-l">MVP</span></div>
+    <div class="meta"><span><b>방식</b> CSS alpha</span><span><b>범위</b> 0–100%</span></div>
+    <p class="desc">평소 불투명도를 슬라이더로 조절한다. 낮출수록 덜 보이고, 높일수록 잘 보인다. 평소값과 호버시값을 따로 둔다.</p>
+    <p><small><b>API</b> 투명 창(<code>transparent:true</code>) 위에서 콘텐츠 컨테이너의 CSS <code>opacity</code>/배경 <code>rgba()</code> alpha 조절</small></p>
+    <p><small><b>한계</b> 창 전체 alpha를 직접 바꾸는 안정적 공개 API는 미확정 — CSS 레벨에서 처리(<b>확인필요</b>: 창 alpha 네이티브 API 필요 시 별도 조사)</small></p>
+  </div>
+  <div class="item s-teal">
+    <div class="top"><h3>Hover-Reveal (클릭 통과)</h3><span class="badge b-p">v1</span></div>
+    <div class="meta"><span><b>감지</b> 커서 폴링</span><span><b>통과</b> ignore cursor</span></div>
+    <p class="desc">평소엔 창이 마우스 클릭을 아래 앱으로 통과시켜(있어도 방해 안 됨), 핫존에 커서가 들어오면 또렷해지고 상호작용을 받는다.</p>
+    <p><small><b>API</b> 클릭통과 <code>set_ignore_cursor_events(bool)</code> / JS <code>setIgnoreCursorEvents</code>. 감지 <code>Window::cursor_position()→PhysicalPosition&lt;f64&gt;</code> / JS <code>cursorPosition()</code>. 권한 <code>core:window:allow-set-ignore-cursor-events</code> · <code>core:window:allow-cursor-position</code></small></p>
+    <p><small><b>핵심 한계</b> 클릭통과 중에는 DOM <code>mouseenter</code>/<code>mouseleave</code>는 물론 네이티브 <code>CursorEntered/Left</code> 이벤트도 발생하지 않음 → <b>커서 위치 폴링(~30–60ms) + 핫존 rect 히트테스트가 유일한 정공법</b></small></p>
+  </div>
+</div>
+
+<div class="callout warn">
+  <div class="ct">설계 크럭스 · 클릭통과 ↔ 호버의 모순</div>
+  <p>"클릭은 통과시키되 호버는 감지"는 서로 충돌한다. 클릭통과를 켜는 순간 창은 마우스 이벤트를 전혀 받지 못하기 때문이다. 검증된 해법은 <b>전역 커서 좌표를 주기적으로 읽어(<code>cursor_position()</code>) 핫존 사각형과 비교</b>하는 폴링 루프다. 이 좌표 API는 "어느 창이 커서를 소유하는가"와 무관한 데스크톱 절대좌표라 클릭통과 상태에서도 정상 동작한다. 폴링 비용을 줄이려면 핫존만 클릭통과를 해제하거나 OS 레벨 NSEvent 모니터(objc2)로 이벤트 기반 전환도 가능하나, 순수 Tauri 범위에서는 폴링이 표준이다. 루프 설계는 <a class="inl" href="architecture.html">아키텍처</a> 참조.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="stealth"><span class="num">⑤</span>화면공유 비노출 · 앱 은폐</h2>
+<p class="section-intro">앱의 "존재" 자체를 감추는 두 기능. 앱 은폐(Dock·Cmd-Tab)는 확실하게 동작하지만, 화면 공유 비노출은 macOS 버전에 따라 한계가 분명하다 — 이 차이를 정직하게 구분해 둔다.</p>
+
+<div class="callout danger">
+  <div class="ct">현실 점검 · 화면 공유 비노출은 macOS 15+에서 동작하지 않는다</div>
+  <p>사전 검증(Tauri #14200) 결과, <code>setContentProtected(true)</code>는 <code>NSWindow.sharingType=NSWindowSharingNone</code>으로 매핑되는데, <b>macOS 15(Sequoia)+의 ScreenCaptureKit는 합성 프레임버퍼를 캡처하며 이 플래그를 무시</b>한다. Zoom·Meet·QuickTime는 모두 ScreenCaptureKit를 쓰므로 <b>오버레이가 화면 공유에 그대로 노출</b>된다. content protection은 <b>macOS ≤14 + 구형 CoreGraphics 캡처</b>에서만 유효하며(심지어 일부 Chromium 기반 공유는 구버전에서도 못 막음 — #10213), Apple의 의도된 변경이라 알려진 우회가 없다. 따라서 이 기능은 <b>best-effort 보조 수단</b>으로만 포지셔닝하고, 화면 공유 환경의 실질 방어는 <b>③ 패닉 단축키(사전/즉시 숨김)</b>에 둔다.</p>
+</div>
+
+<div class="cards two">
+  <div class="item s-blocked">
+    <div class="top"><h3>화면공유 비노출(content protection)</h3><span class="badge b-p">v1</span></div>
+    <div class="meta"><span><b>매핑</b> sharingType=none</span><span><b>유효</b> macOS ≤14</span></div>
+    <p class="desc">창을 화면 캡처 대상에서 제외하도록 요청한다. 구버전 macOS에서는 화면 공유·스크린샷에서 빠지지만, 최신 macOS에서는 효과가 없다.</p>
+    <p><small><b>API</b> Rust <code>WebviewWindow::set_content_protected(true)</code> / JS <code>getCurrentWindow().setContentProtected(true)</code> / 설정 <code>contentProtected:true</code>. 권한 <code>core:window:allow-set-content-protected</code></small></p>
+    <p><small><b>한계</b> <b>macOS 15+에서 무효</b>(ScreenCaptureKit가 무시). 보조 수단으로만 사용하고 사용자에게 한계를 안내</small></p>
+  </div>
+  <div class="item s-accent2">
+    <div class="top"><h3>앱 은폐 (Dock · Cmd-Tab)</h3><span class="badge b-p">v1</span> <span class="badge b-teal">스텔스 핵심</span></div>
+    <div class="meta"><span><b>정책</b> Accessory</span><span><b>대상</b> Dock·앱스위처·메뉴바</span></div>
+    <p class="desc">앱을 Dock 아이콘·Cmd-Tab 목록·메뉴바에서 모두 제거해, 앱이 실행 중이라는 단서 자체를 없앤다. 이건 macOS에서 확실히 동작한다.</p>
+    <p><small><b>API</b> 설정 <code>app.macOS.activationPolicy:"accessory"</code>(정확 경로) 또는 런타임 <code>app.set_activation_policy(ActivationPolicy::Accessory)</code>. 정적 대안 Info.plist <code>LSUIElement=true</code></small></p>
+    <p><small><b>주의</b> Accessory 앱은 <code>show()</code>만으로 포커스가 안 옴 → 입력 필요 시 <code>set_focus()</code>로 온디맨드 활성화(<a class="inl" href="architecture.html">포커스 모델</a> 참조)</small></p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="settings"><span class="num">⑥</span>설정 · 상태 영속화</h2>
+<p class="section-intro">크기·투명도·핫존·단축키 등 사용자 취향을 저장하고, 재실행 시 그대로 복원한다. 설정 UI는 호출했을 때만 뜨는 가벼운 패널로 둔다.</p>
+
+<div class="grid two">
+  <div class="panel">
+    <h4>설정 항목</h4>
+    <ul>
+      <li><b>창</b> — 기본 크기·위치, 시작 시 표시 여부</li>
+      <li><b>투명도</b> — 평소 불투명도 / 호버 시 불투명도</li>
+      <li><b>핫존</b> — 호버 감지 영역(위치·크기), 다중 가능(v2)</li>
+      <li><b>단축키</b> — 패닉 토글 키, 표시/숨김 키 매핑</li>
+      <li><b>뷰어</b> — 북마크(작품 URL) 목록</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h4>영속화</h4>
+    <p>설정·북마크·마지막 보던 위치를 디스크에 저장하고 재실행 시 복원한다.</p>
+    <ul>
+      <li><b>저장</b> — <code>tauri-plugin-store</code>(JSON KV) 또는 <code>fs</code> 플러그인</li>
+      <li><b>대상</b> — 설정값 · 북마크 · 마지막 URL/스크롤</li>
+      <li><b>주의</b> — 파일 경로/이름이 "흔적"이 되지 않도록 평범하게(스텔스 관점)</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="v2"><span class="num">⑦</span>확장 (v2)</h2>
+<p class="section-intro">핵심 스텔스가 완성된 뒤 추가하는 편의·고급 기능. 없어도 제품은 성립하므로 후순위.</p>
+
+<div class="cards three">
+  <div class="item s-deferred">
+    <div class="top"><h3>다중 핫존 · 프로필</h3><span class="badge b-med">v2</span></div>
+    <p class="desc">여러 호버 영역, 상황별 설정 프로필(모니터/자리별) 전환.</p>
+    <p><small><b>비고</b> ④ 핫존 로직의 일반화</small></p>
+  </div>
+  <div class="item s-deferred">
+    <div class="top"><h3>다중 모니터 대응</h3><span class="badge b-med">v2</span></div>
+    <p class="desc">모니터별 좌표/스케일 보정. 커서 폴링의 글로벌 좌표를 모니터에 매핑.</p>
+    <p><small><b>API</b> <code>available_monitors</code> · <code>scale_factor</code></small></p>
+  </div>
+  <div class="item s-deferred">
+    <div class="top"><h3>자동 패닉 트리거</h3><span class="badge b-med">v2</span></div>
+    <p class="desc">특정 앱 실행/화면 공유 시작 감지 시 자동 숨김 등(가능 범위 내).</p>
+    <p><small><b>비고</b> 감지 수단·신뢰성 사전 검증 필요(격차)</small></p>
+  </div>
+</div>
+
+<hr/>
+
+<div class="panel">
+  <h4>우선순위 요약 (전 영역)</h4>
+  <p>MVP는 "투명 오버레이 + 뷰어 로드 + <b>패닉 단축키</b> + 투명도"로 "띄우고 즉시 숨긴다"를 완성한다. v1에서 Hover-Reveal·앱 은폐·content protection(보조)·설정 영속화로 스텔스를 완성하고, v2는 편의 기능이다.</p>
+  <div class="grid three">
+    <div class="panel"><b><span class="schip progress"><span class="dot"></span>MVP</span></b><p><small>②투명 오버레이·크기/위치·뷰어 로드 · ③패닉 단축키 · ④투명도</small></p></div>
+    <div class="panel"><b><span class="schip done"><span class="dot"></span>v1</span></b><p><small>②Spaces 전역 · ④Hover-Reveal · ⑤앱 은폐 · ⑤content protection(보조) · ⑥설정·영속화</small></p></div>
+    <div class="panel"><b><span class="schip deferred"><span class="dot"></span>v2</span></b><p><small>⑦다중 핫존·프로필 · 다중 모니터 · 자동 패닉 트리거</small></p></div>
+  </div>
+</div>
+
+<p class="muted"><small>※ 모든 API 식별자는 사전 검증값이다. 화면 공유 비노출의 macOS 15+ 한계, 창 alpha 네이티브 API 등 "확인필요" 항목은 구현 전 <a class="inl" href="architecture.html">아키텍처</a>에서 재확인한다.</small></p>
+
+<div class="crosslinks">
+  <a href="index.html"><span class="ar">←</span> 개요·인덱스</a>
+  <a href="screen-design.html">화면 설계 <span class="ar">→</span></a>
+  <a href="architecture.html">아키텍처·동작 <span class="ar">→</span></a>
+</div>
+<div class="footer">Peekaboo 기획 · 기능 명세 · 2026-06 · <a href="index.html">인덱스</a></div>
+
+</main>
+</div>
+</body>
+</html>

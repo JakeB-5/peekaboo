@@ -1,0 +1,17 @@
+# OS
+.DS_Store
+
+# OMC tooling state (local session state, not source)
+.omc/
+
+# Node / frontend (future scaffolding)
+node_modules/
+dist/
+.vite/
+
+# Tauri / Rust build artifacts (future)
+src-tauri/target/
+target/
+
+# Logs
+*.log
