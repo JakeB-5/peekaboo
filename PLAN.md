@@ -142,3 +142,4 @@
 - **Phase 1 완료** — 패닉 전역 단축키(`⌘⇧H`, Rust 핸들러 직접 토글), iframe 뷰어, 드래그 핸들. 자동 검증 + `tauri dev` 런타임 스모크(앱 기동·무패닉) 통과. 수동 검증(전역 입력 즉시 탈출/복귀)은 사용자 머신 필요.
 - **Phase 2 완료** — Hover-Reveal: 커서 폴링 스레드(40ms, 엣지 트리거) + 클릭통과 토글 + Ghost↔Revealed 상태 머신(Rust) + `reveal-state-changed` 이벤트→프론트 opacity. 자동 검증 + hover 루프 런타임 스모크(무패닉) 통과. 수동(클릭통과·호버전환)은 사용자 머신 필요.
 - **Phase 3 완료** — 은폐 강화: Accessory(Dock·Cmd-Tab 숨김)·Spaces 전역·content protection(macOS 15+ 무효 주석)·온디맨드 포커스(드래그 스트립 클릭). 자동 검증 + 런타임 스모크(정책 적용 후 무패닉) 통과. 수동(은폐 육안·화면공유 실측)은 사용자 머신 필요.
+- **Phase 4a 완료** — 영속화 코어: `Settings`(단일 소스, `Arc<Mutex<>>` managed) + `serde_json`/`fs` 영속화(config dir, 외부 store 플러그인 불요) + 커맨드 `get_settings`/`save_settings`(동적 핫존·동적 패닉 단축키 재등록 포함). 핫존을 fraction으로 일반화. 프론트는 부팅 시 `get_settings`로 opacity CSS 변수·URL 적용. 자동 검증 + Rust 단위 테스트 3종(serde 라운드트립·부분로드·기본핫존) + 런타임 스모크 통과.

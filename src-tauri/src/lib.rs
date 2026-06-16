@@ -2,40 +2,115 @@
 //!
 //! Responsibility boundary (docs/architecture.html §①): the Rust core owns
 //! every stealth-relevant window property, the panic global shortcut, cursor
-//! polling and the reveal state machine. The WebView only renders content.
+//! polling, the reveal state machine and persisted settings. The WebView only
+//! renders content and reflects state.
 //!
-//! Phase 2 (stealth core): adds the hover-reveal state machine. A cursor
-//! polling loop hit-tests the global cursor against the hotzone and flips the
-//! window between Ghost (faint, click-through) and Revealed (opaque, cursor
-//! events captured) — the only robust approach, since click-through suppresses
-//! every WebView/native mouse event.
-//!
-//! Phase 3 (concealment): hides the app from Dock / Cmd-Tab (Accessory policy),
-//! floats it across all Spaces, and requests content protection (best-effort —
-//! ineffective on macOS 15+). On-demand focus lives in the frontend.
+//! Phases: 0 scaffold · 1 panic shortcut · 2 hover-reveal · 3 concealment
+//! (Accessory / Spaces / content protection) · 4 settings + persistence.
 
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::{thread, time::Duration};
 
-use tauri::{ActivationPolicy, Emitter, Manager, PhysicalPosition, WebviewWindow};
-use tauri_plugin_global_shortcut::{
-    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
+use serde::{Deserialize, Serialize};
+use tauri::{
+    ActivationPolicy, AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, State,
+    WebviewWindow,
 };
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
-/// Default panic shortcut: Cmd+Shift+H.
-///
-/// A standard modifier+key combo is routed by macOS via `RegisterEventHotKey`,
-/// so it fires even when Peekaboo is unfocused and needs no Accessibility
-/// permission. Media keys are avoided on purpose (they require a CGEventTap and
-/// therefore the Accessibility permission).
-fn panic_shortcut() -> Shortcut {
-    Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyH)
+/// Hover hotzone as fractions (0..1) of the window. Default = whole window.
+#[derive(Clone, Serialize, Deserialize)]
+struct Hotzone {
+    fx: f64,
+    fy: f64,
+    fw: f64,
+    fh: f64,
 }
 
-/// Toggle the overlay between hidden and visible.
-///
-/// The window is hidden (not destroyed), so scroll position and loaded content
-/// are preserved and re-showing restores the exact prior view ("복귀 무결성").
-fn toggle_overlay(app: &tauri::AppHandle) {
+impl Default for Hotzone {
+    fn default() -> Self {
+        Self { fx: 0.0, fy: 0.0, fw: 1.0, fh: 1.0 }
+    }
+}
+
+/// Persisted user settings — the single source of truth, owned by the core.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+struct Settings {
+    url: String,
+    ghost_opacity: f64,
+    revealed_opacity: f64,
+    width: f64,
+    height: f64,
+    hotzone: Hotzone,
+    /// Accelerator string, e.g. "CmdOrControl+Shift+H".
+    panic_shortcut: String,
+    bookmarks: Vec<String>,
+    content_protected: bool,
+    always_on_top: bool,
+    spaces_global: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            url: "https://example.com".to_string(),
+            ghost_opacity: 0.08,
+            revealed_opacity: 1.0,
+            width: 420.0,
+            height: 720.0,
+            hotzone: Hotzone::default(),
+            panic_shortcut: "CmdOrControl+Shift+H".to_string(),
+            bookmarks: Vec::new(),
+            content_protected: true,
+            always_on_top: true,
+            spaces_global: true,
+        }
+    }
+}
+
+type SharedSettings = Arc<Mutex<Settings>>;
+
+/// Cursor polling interval (~25 fps). Trade-off between reveal responsiveness
+/// and idle CPU (roadmap risk #4). Edge-triggered.
+const HOVER_POLL: Duration = Duration::from_millis(40);
+
+// ---- persistence -------------------------------------------------------
+
+fn settings_path(app: &AppHandle) -> Option<PathBuf> {
+    // A plain filename keeps the on-disk trace low-key (the dir still carries
+    // the bundle identifier — acceptable for a personal tool).
+    app.path().app_config_dir().ok().map(|d| d.join("prefs.json"))
+}
+
+fn load_settings(app: &AppHandle) -> Settings {
+    settings_path(app)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|txt| serde_json::from_str::<Settings>(&txt).ok())
+        .unwrap_or_default()
+}
+
+fn persist_settings(app: &AppHandle, s: &Settings) -> Result<(), String> {
+    let path = settings_path(app).ok_or("no config dir")?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let txt = serde_json::to_string_pretty(s).map_err(|e| e.to_string())?;
+    std::fs::write(path, txt).map_err(|e| e.to_string())
+}
+
+// ---- window / hover ----------------------------------------------------
+
+fn apply_window_settings(win: &WebviewWindow, s: &Settings) {
+    let _ = win.set_size(LogicalSize::new(s.width, s.height));
+    let _ = win.set_always_on_top(s.always_on_top);
+    let _ = win.set_visible_on_all_workspaces(s.spaces_global);
+    // Best-effort only — ineffective on macOS 15+ (ScreenCaptureKit, #14200).
+    let _ = win.set_content_protected(s.content_protected);
+}
+
+fn toggle_overlay(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         if win.is_visible().unwrap_or(false) {
             let _ = win.hide();
@@ -46,40 +121,25 @@ fn toggle_overlay(app: &tauri::AppHandle) {
     }
 }
 
-/// Cursor polling interval (~25 fps). Trade-off between reveal responsiveness
-/// and idle CPU (roadmap risk #4). Edge-triggered: native APIs are touched only
-/// when the inside/outside result actually changes.
-const HOVER_POLL: Duration = Duration::from_millis(40);
-
-/// Is the cursor (desktop physical coords) within the reveal hotzone?
-///
-/// Phase 2 default hotzone = the whole window. `outer_position` and
-/// `inner_size` are both physical, matching `cursor_position`, so no scale
-/// conversion is needed here; sub-window hotzones (Phase 4) will fold in
-/// `scale_factor`.
-fn hotzone_contains(win: &WebviewWindow, cursor: PhysicalPosition<f64>) -> bool {
+/// Is the cursor (desktop physical coords) inside the hotzone rectangle?
+fn hotzone_contains(win: &WebviewWindow, cursor: PhysicalPosition<f64>, hz: &Hotzone) -> bool {
     let (Ok(origin), Ok(size)) = (win.outer_position(), win.inner_size()) else {
         return false;
     };
-    let left = origin.x as f64;
-    let top = origin.y as f64;
+    let w = size.width as f64;
+    let h = size.height as f64;
+    let left = origin.x as f64 + hz.fx * w;
+    let top = origin.y as f64 + hz.fy * h;
     cursor.x >= left
-        && cursor.x <= left + size.width as f64
+        && cursor.x <= left + hz.fw * w
         && cursor.y >= top
-        && cursor.y <= top + size.height as f64
+        && cursor.y <= top + hz.fh * h
 }
 
-/// Reveal state machine driver (architecture.html §④).
-///
-/// Click-through and hover detection are intrinsically in conflict: once
-/// `set_ignore_cursor_events(true)` is on, the WebView receives no mouse events
-/// at all. So we poll the global cursor and hit-test the hotzone, flipping
-/// native state only on edges:
-///   inside  → Revealed (opaque, cursor events captured)
-///   outside → Ghost    (faint, click-through)
-/// While the window is hidden (panic), hover transitions are suspended and
-/// re-evaluated cleanly on the next show.
-fn spawn_hover_loop(win: WebviewWindow) {
+/// Reveal state machine driver (architecture.html §④): poll the global cursor,
+/// hit-test the (configurable) hotzone, flip Ghost/Revealed on edges only.
+/// Suspended while hidden (panic); re-evaluated on the next show.
+fn spawn_hover_loop(win: WebviewWindow, settings: SharedSettings) {
     thread::spawn(move || {
         let mut inside_prev: Option<bool> = None;
         loop {
@@ -93,7 +153,11 @@ fn spawn_hover_loop(win: WebviewWindow) {
             let Ok(cursor) = win.cursor_position() else {
                 continue;
             };
-            let inside = hotzone_contains(&win, cursor);
+            let hz = settings
+                .lock()
+                .map(|s| s.hotzone.clone())
+                .unwrap_or_default();
+            let inside = hotzone_contains(&win, cursor, &hz);
 
             if Some(inside) != inside_prev {
                 let _ = win.set_ignore_cursor_events(!inside);
@@ -107,47 +171,118 @@ fn spawn_hover_loop(win: WebviewWindow) {
     });
 }
 
+// ---- commands ----------------------------------------------------------
+
+#[tauri::command]
+fn get_settings(state: State<'_, SharedSettings>) -> Settings {
+    state.lock().expect("settings lock poisoned").clone()
+}
+
+#[tauri::command]
+fn save_settings(
+    app: AppHandle,
+    state: State<'_, SharedSettings>,
+    settings: Settings,
+) -> Result<(), String> {
+    // Re-register the panic shortcut only if it changed.
+    let old = state
+        .lock()
+        .map_err(|_| "settings lock poisoned".to_string())?
+        .panic_shortcut
+        .clone();
+    if old != settings.panic_shortcut {
+        let gs = app.global_shortcut();
+        let _ = gs.unregister(old.as_str());
+        gs.register(settings.panic_shortcut.as_str())
+            .map_err(|e| e.to_string())?;
+    }
+
+    if let Some(win) = app.get_webview_window("main") {
+        apply_window_settings(&win, &settings);
+    }
+
+    *state
+        .lock()
+        .map_err(|_| "settings lock poisoned".to_string())? = settings.clone();
+    persist_settings(&app, &settings)
+}
+
+// ---- entry -------------------------------------------------------------
+
 pub fn run() {
-    // `Shortcut` is `Copy`, so the value is copied into each `move` closure.
-    let panic = panic_shortcut();
+    let settings: SharedSettings = Arc::new(Mutex::new(Settings::default()));
+    let settings_for_setup = settings.clone();
 
     tauri::Builder::default()
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, shortcut, event| {
-                    // Run the panic toggle straight from the Rust handler — no
-                    // IPC round-trip — so the overlay hides with minimal delay.
-                    if event.state() == ShortcutState::Pressed && shortcut == &panic {
+                .with_handler(|app, _shortcut, event| {
+                    // Only the panic shortcut is ever registered, so any Pressed
+                    // event is the panic key. Toggle straight from the Rust
+                    // handler (no IPC round-trip) for minimal latency.
+                    if event.state() == ShortcutState::Pressed {
                         toggle_overlay(app);
                     }
                 })
                 .build(),
         )
+        .manage(settings)
+        .invoke_handler(tauri::generate_handler![get_settings, save_settings])
         .setup(move |app| {
-            // Register exactly once; double registration panics with
-            // `Invalid argument (os error 22)`.
-            app.global_shortcut().register(panic)?;
+            let handle = app.handle().clone();
+            let loaded = load_settings(&handle);
+            if let Ok(mut guard) = settings_for_setup.lock() {
+                *guard = loaded.clone();
+            }
 
-            // Hide the app from the Dock / Cmd-Tab / menu bar. Must be set on
-            // `App` (not `AppHandle`) — see Tauri #9244.
+            // Register the panic shortcut exactly once (os error 22 on double).
+            app.global_shortcut()
+                .register(loaded.panic_shortcut.as_str())?;
+
+            // Hide from Dock / Cmd-Tab. Must be on `App`, not `AppHandle` (#9244).
             #[cfg(target_os = "macos")]
             app.set_activation_policy(ActivationPolicy::Accessory);
 
             if let Some(win) = app.get_webview_window("main") {
-                // Float across all Spaces (architecture §③).
-                let _ = win.set_visible_on_all_workspaces(true);
-
-                // Best-effort screen-share exclusion. INEFFECTIVE on macOS 15+
-                // (ScreenCaptureKit ignores NSWindowSharingNone, Tauri #14200);
-                // the real defense is the panic shortcut. Kept as a secondary
-                // measure for older macOS and legacy capture paths.
-                let _ = win.set_content_protected(true);
-
-                // Start the cursor-polling reveal loop.
-                spawn_hover_loop(win);
+                apply_window_settings(&win, &loaded);
+                spawn_hover_loop(win, settings_for_setup.clone());
             }
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running Peekaboo");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_round_trip() {
+        let s = Settings::default();
+        let json = serde_json::to_string(&s).expect("serialize");
+        let back: Settings = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.url, s.url);
+        assert_eq!(back.panic_shortcut, s.panic_shortcut);
+        assert!((back.ghost_opacity - s.ghost_opacity).abs() < 1e-9);
+        assert!((back.hotzone.fw - s.hotzone.fw).abs() < 1e-9);
+        assert_eq!(back.bookmarks.len(), 0);
+    }
+
+    #[test]
+    fn settings_tolerates_missing_fields() {
+        // #[serde(default)] lets partial/older prefs files load without error.
+        let partial = r#"{"url":"https://x.test"}"#;
+        let s: Settings = serde_json::from_str(partial).expect("partial load");
+        assert_eq!(s.url, "https://x.test");
+        assert_eq!(s.panic_shortcut, "CmdOrControl+Shift+H");
+        assert!((s.ghost_opacity - 0.08).abs() < 1e-9);
+    }
+
+    #[test]
+    fn default_hotzone_covers_whole_window() {
+        let hz = Hotzone::default();
+        assert!(hz.fx.abs() < 1e-9 && hz.fy.abs() < 1e-9);
+        assert!((hz.fw - 1.0).abs() < 1e-9 && (hz.fh - 1.0).abs() < 1e-9);
+    }
 }
