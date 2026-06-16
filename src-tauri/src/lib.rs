@@ -30,7 +30,12 @@ struct Hotzone {
 
 impl Default for Hotzone {
     fn default() -> Self {
-        Self { fx: 0.0, fy: 0.0, fw: 1.0, fh: 1.0 }
+        Self {
+            fx: 0.0,
+            fy: 0.0,
+            fw: 1.0,
+            fh: 1.0,
+        }
     }
 }
 
@@ -86,7 +91,10 @@ const HOVER_POLL: Duration = Duration::from_millis(40);
 fn settings_path(app: &AppHandle) -> Option<PathBuf> {
     // A plain filename keeps the on-disk trace low-key (the dir still carries
     // the bundle identifier — acceptable for a personal tool).
-    app.path().app_config_dir().ok().map(|d| d.join("prefs.json"))
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("prefs.json"))
 }
 
 fn load_settings(app: &AppHandle) -> Settings {
@@ -112,7 +120,11 @@ fn apply_window_settings(win: &WebviewWindow, s: &Settings) {
     let _ = win.set_always_on_top(s.always_on_top);
     let _ = win.set_visible_on_all_workspaces(s.spaces_global);
     // Best-effort only — ineffective on macOS 15+ (ScreenCaptureKit, #14200).
-    let _ = win.set_content_protected(s.content_protected);
+    // Log a failure rather than swallow it: a silently lost content-protection
+    // call means the overlay runs exposed, which manual verification must catch.
+    if let Err(e) = win.set_content_protected(s.content_protected) {
+        eprintln!("[peekaboo] set_content_protected failed: {e}");
+    }
 }
 
 fn toggle_overlay(app: &AppHandle) {
@@ -129,6 +141,23 @@ fn toggle_overlay(app: &AppHandle) {
         } else {
             let _ = win.show();
             let _ = win.set_focus();
+            // Re-assert stealth-critical window properties on every re-show:
+            // macOS can drop content protection / always-on-top across some
+            // hide/show or display-reconfiguration transitions, and the panic
+            // re-show is the most safety-critical moment to guarantee them.
+            if let Some(state) = app.try_state::<SharedSettings>() {
+                if let Ok(s) = state.lock() {
+                    apply_window_settings(&win, &s);
+                }
+            }
+            // Start from a safe ghost state: click-through on and content
+            // ghosted, so the overlay never reappears at the previous revealed
+            // opacity (visible flash) or swallows clicks until the hover loop
+            // re-evaluates the cursor on its next poll.
+            if let Err(e) = win.set_ignore_cursor_events(true) {
+                eprintln!("[peekaboo] set_ignore_cursor_events failed: {e}");
+            }
+            let _ = win.emit("reveal-state-changed", "ghost");
         }
     }
 }
@@ -146,6 +175,20 @@ fn hotzone_contains(win: &WebviewWindow, cursor: PhysicalPosition<f64>, hz: &Hot
         && cursor.x <= left + hz.fw * w
         && cursor.y >= top
         && cursor.y <= top + hz.fh * h
+}
+
+/// Is the point (physical px) on any currently-attached monitor? Used to avoid
+/// restoring the overlay off-screen after a monitor / display-layout change.
+fn point_on_any_monitor(win: &WebviewWindow, x: i32, y: i32) -> bool {
+    match win.available_monitors() {
+        Ok(monitors) => monitors.iter().any(|m| {
+            let p = m.position();
+            let s = m.size();
+            x >= p.x && y >= p.y && x < p.x + s.width as i32 && y < p.y + s.height as i32
+        }),
+        // If monitors can't be enumerated, don't block the restore.
+        Err(_) => true,
+    }
 }
 
 /// Reveal state machine driver (architecture.html §④): poll the global cursor,
@@ -172,7 +215,9 @@ fn spawn_hover_loop(win: WebviewWindow, settings: SharedSettings) {
             let inside = hotzone_contains(&win, cursor, &hz);
 
             if Some(inside) != inside_prev {
-                let _ = win.set_ignore_cursor_events(!inside);
+                if let Err(e) = win.set_ignore_cursor_events(!inside) {
+                    eprintln!("[peekaboo] set_ignore_cursor_events failed: {e}");
+                }
                 let _ = win.emit(
                     "reveal-state-changed",
                     if inside { "revealed" } else { "ghost" },
@@ -187,7 +232,9 @@ fn spawn_hover_loop(win: WebviewWindow, settings: SharedSettings) {
 
 #[tauri::command]
 fn get_settings(state: State<'_, SharedSettings>) -> Settings {
-    state.lock().expect("settings lock poisoned").clone()
+    // A read must never crash the command layer: recover the guard if the mutex
+    // was poisoned, mirroring save_settings' graceful handling.
+    state.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 #[tauri::command]
@@ -204,9 +251,13 @@ fn save_settings(
         .clone();
     if old != settings.panic_shortcut {
         let gs = app.global_shortcut();
-        let _ = gs.unregister(old.as_str());
+        // Register the NEW accelerator first; only drop the old one once the new
+        // one is live. If registration fails we keep the old panic key intact
+        // (never leave the user with no working escape) and abort before
+        // mutating state, so get_settings never reports an unregistered key.
         gs.register(settings.panic_shortcut.as_str())
             .map_err(|e| e.to_string())?;
+        let _ = gs.unregister(old.as_str());
     }
 
     if let Some(win) = app.get_webview_window("main") {
@@ -248,8 +299,26 @@ pub fn run() {
             }
 
             // Register the panic shortcut exactly once (os error 22 on double).
-            app.global_shortcut()
-                .register(loaded.panic_shortcut.as_str())?;
+            // If the persisted accelerator is invalid (e.g. a hand-edited or
+            // corrupt prefs.json), fall back to the known-good default instead
+            // of aborting launch — a stealth overlay that refuses to start is
+            // worse than one running with the default panic key.
+            if app
+                .global_shortcut()
+                .register(loaded.panic_shortcut.as_str())
+                .is_err()
+            {
+                let def = Settings::default().panic_shortcut;
+                let _ = app.global_shortcut().register(def.as_str());
+                if let Ok(mut guard) = settings_for_setup.lock() {
+                    guard.panic_shortcut = def;
+                }
+                eprintln!(
+                    "[peekaboo] persisted panic shortcut '{}' could not be registered; \
+                     fell back to default",
+                    loaded.panic_shortcut
+                );
+            }
 
             // Hide from Dock / Cmd-Tab. Must be on `App`, not `AppHandle` (#9244).
             #[cfg(target_os = "macos")]
@@ -258,9 +327,14 @@ pub fn run() {
             if let Some(win) = app.get_webview_window("main") {
                 apply_window_settings(&win, &loaded);
 
-                // Restore the last window position (physical pixels).
+                // Restore the last window position (physical pixels) only if it
+                // still lands on an attached monitor — a display change could
+                // otherwise strand the decorationless overlay off-screen with no
+                // titlebar or Dock entry to recover it.
                 if let (Some(x), Some(y)) = (loaded.x, loaded.y) {
-                    let _ = win.set_position(PhysicalPosition::new(x, y));
+                    if point_on_any_monitor(&win, x, y) {
+                        let _ = win.set_position(PhysicalPosition::new(x, y));
+                    }
                 }
 
                 // Track moves in memory; persist on close.
@@ -325,7 +399,11 @@ mod tests {
     #[test]
     fn position_round_trip() {
         // Last-position persistence (Phase 4c).
-        let s = Settings { x: Some(123), y: Some(-45), ..Settings::default() };
+        let s = Settings {
+            x: Some(123),
+            y: Some(-45),
+            ..Settings::default()
+        };
         let back: Settings =
             serde_json::from_str(&serde_json::to_string(&s).expect("ser")).expect("de");
         assert_eq!(back.x, Some(123));
