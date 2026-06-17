@@ -12,12 +12,12 @@
            toolbars hold the mini-controls (screen-design §③). -->
       <div id="chrome">
         <div class="toolbar">
-          <button id="btn-settings" type="button" data-i18n-title="settings.open" title="Settings">☰</button>
-          <button id="btn-bookmark" type="button" data-i18n-title="bookmark.add" title="Bookmark this page">★</button>
+          <button id="btn-settings" type="button" data-i18n-title="settings.open" data-i18n-aria-label="settings.open" title="Settings" aria-label="Settings">☰</button>
+          <button id="btn-bookmark" type="button" data-i18n-title="bookmark.add" data-i18n-aria-label="bookmark.add" title="Bookmark this page" aria-label="Bookmark this page">★</button>
         </div>
         <span class="drag-hint" data-tauri-drag-region aria-hidden="true">⠿⠿⠿</span>
         <div class="toolbar">
-          <button id="btn-panic" type="button" data-i18n-title="panic.hide" title="Hide (panic)">✕</button>
+          <button id="btn-panic" type="button" data-i18n-title="panic.hide" data-i18n-aria-label="panic.hide" title="Hide (panic)" aria-label="Hide (panic)">✕</button>
         </div>
       </div>
 
@@ -30,9 +30,10 @@
       <section id="settings" hidden>
         <header class="s-head">
           <span data-i18n="settings.title">Peekaboo · Settings</span>
-          <button id="btn-close" type="button" data-i18n-title="close" title="Close">✕</button>
+          <button id="btn-close" type="button" data-i18n-title="close" data-i18n-aria-label="close" title="Close" aria-label="Close">✕</button>
         </header>
         <div class="s-body">
+          <div class="s-sect" data-i18n="section.general">General</div>
           <label class="s-field">
             <span data-i18n="field.language">Language</span>
             <select id="f-locale">
