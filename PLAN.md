@@ -1,0 +1,166 @@
+# Peekaboo 구현 계획 · 단계별 완료 기준
+
+> 본 문서는 `docs/` 기획 세트(특히 `docs/roadmap.html`)를 실제 구현으로 옮기기 위한 **실행 계획**이자 **완료 체크리스트**다.
+> 각 Phase는 `산출물`, `자동 검증`(에이전트가 실행 가능), `수동 검증`(사용자 머신에서 GUI 육안·상호작용 필요)으로 나눈다.
+> 스텔스 앱의 합격선은 "기능이 된다"가 아니라 "들키지 않는다"이므로, 수동 검증 항목은 실제 위협 시나리오로 기술한다.
+
+## 검증 환경의 한계 (정직한 고지)
+
+- 빌드·컴파일·린트·dev 서버 기동·설정 스키마 유효성은 **자동 검증**으로 확인한다.
+- 투명창의 실제 비침, 다른 앱 포커스 상태에서의 패닉 키 발화, 클릭 통과, 화면 공유 노출 여부 등 **GUI 육안/전역 입력 상호작용**은 헤드리스 환경에서 확인 불가하므로 **수동 검증**으로 분리하고, 재현 절차를 명시한다.
+- 환경: macOS 26.x(Sequoia 이후) → `contentProtected`는 화면 공유를 **막지 못함**(문서에 명시된 확정 한계). 따라서 Phase 3의 화면공유 게이트는 "통과"가 아니라 "노출됨을 기록"이 목표다.
+
+## 기술 베이스라인 (검증된 버전)
+
+- Rust: stable (rustup), Tauri 코어 `tauri = "2"`, `tauri-build = "2"`
+- 플러그인: `tauri-plugin-global-shortcut = "2"` (+ JS `@tauri-apps/plugin-global-shortcut` 2.3.x)
+- CLI: `@tauri-apps/cli` 2.11.x, API: `@tauri-apps/api` 2.11.x
+- 프론트: TypeScript + Vite(vanilla, 최소 의존성 원칙) — Vite root = `src/`
+- feature: `macos-private-api`(투명창 필수, App Store 부적격 — 개인 도구라 무관)
+
+---
+
+## Phase 0 · 스캐폴딩
+
+**목표** 빈 투명·무테 창이 떠서 `tauri dev`가 도는 상태.
+
+**산출물**
+- [x] `package.json` / `tsconfig.json` / `vite.config.ts` (Vite root=src, port 1420) + `eslint.config.js`
+- [x] `src/index.html` · `src/main.ts` · `src/styles.css`
+- [x] `src-tauri/Cargo.toml` (`macos-private-api` feature, global-shortcut 플러그인)
+- [x] `src-tauri/tauri.conf.json` (투명·무테·항상위·skipTaskbar·`visible:true`=고스트 기본)
+- [x] `src-tauri/build.rs` · `src-tauri/src/main.rs` · `src-tauri/src/lib.rs`
+- [x] `src-tauri/capabilities/default.json` (window·global-shortcut 권한 선언)
+- [x] `src-tauri/icons/` (PIL로 생성한 아이콘 세트 — macOS만)
+
+**자동 검증**
+- [x] `npm install` 성공 (exit 0)
+- [x] `npx tsc --noEmit` 에러 0 (`npm run build`)
+- [x] `eslint .` 0 errors / 0 warnings
+- [x] `cargo build --manifest-path src-tauri/Cargo.toml` 성공 (exit 0, 40.6s) — 의존성·feature·capabilities 권한 식별자 검증됨
+- [x] `tauri.conf.json` 스키마 유효(빌드가 곧 검증)
+
+**수동 검증 (사용자)**
+- [ ] `npm run tauri dev` 실행 시 투명·무테 창이 뜨고 배경이 비침, 콘솔 에러 없음 (헤드리스 환경 확인 불가 — 사용자 머신 필요)
+
+---
+
+## Phase 1 · MVP — 오버레이 + 패닉
+
+**목표** "띄우고 → 즉시 숨긴다" 수직 경로 완성.
+
+**산출물**
+- [x] 웹 URL 로드(설정 가능한 기본 URL, iframe), 항상-위, 기본 크기/위치
+- [x] **패닉 전역 단축키**(기본 `Cmd+Shift+H`) — Rust 핸들러에서 직접 토글 hide/show (저지연)
+- [x] 복귀 시 보던 위치/스크롤 유지(창을 destroy하지 않고 hide/show)
+- [x] 기본 투명도(고스트 opacity) CSS 적용
+- [x] 드래그 영역(`data-tauri-drag-region`) 정의(무테 창 이동 — 상단 chrome 스트립)
+
+**자동 검증**
+- [x] `cargo build` 성공, `cargo clippy` 경고 0 (Shortcut `Copy` clone 제거)
+- [x] 단축키 단일 등록 보장(setup에서 1회만 register — os error 22 회피)
+- [x] `tsc --noEmit` / eslint 통과
+- [x] **런타임 스모크**: `tauri dev`로 앱 기동 확인 — Vite ready → cargo Finished → `Running target/debug/peekaboo`, 패닉/초기화 에러 없이 실행됨(초기화 경로 검증)
+
+**수동 검증 (사용자 — 위협 시나리오)** *(헤드리스 확인 불가 — 전역 입력·육안 필요)*
+- [ ] **즉시 탈출**: 다른 앱이 포커스인 상태에서 패닉 키(`⌘⇧H`) → 창이 체감 지연 없이 사라짐
+- [ ] **복귀 무결성**: 다시 패닉 키 → 보던 위치·스크롤 유지된 채 복귀
+
+---
+
+## Phase 2 · 스텔스 본체 — Hover-Reveal
+
+**목표** 평소 고스트(클릭 통과) ↔ 핫존 호버 시 노출. 상태 머신은 Rust 단일 소스.
+
+**산출물**
+- [x] 클릭 통과 토글 `set_ignore_cursor_events(bool)` (Ghost=true / Revealed=false)
+- [x] 커서 폴링 루프(`cursor_position`, 40ms, 엣지 트리거)로 핫존 히트테스트
+- [x] 핫존 rect 계산(`outer_position` + `inner_size`; 기본 핫존=창 전체, 물리좌표 일치로 scale 불필요 — 서브핫존은 P4)
+- [x] 노출 상태 머신(Ghost↔Revealed; Hidden은 패닉, Focused는 P3) — Rust 폴링 스레드 보유, 숨김 중 hover 전이 중단
+- [x] `reveal-state-changed` 이벤트 emit → 프론트 `data-state` opacity 동기화
+- [x] 평소/호버 투명도 분리(CSS, `.12s` 트랜지션)
+
+**자동 검증**
+- [x] `cargo build` / `clippy`(무경고) / `tsc` / eslint 통과 — `cursor_position`·`set_ignore_cursor_events`·`outer_position`·`inner_size`·`emit` API 검증됨
+- [x] 엣지 트리거(상태 변화 시에만 토글) + `is_visible` 게이트로 폴링 비용·thread 안전성 확보
+- [x] **런타임 스모크**: `tauri dev`로 앱 기동 + hover 루프 ~6초 가동, 스레드 패닉 없음
+
+**수동 검증 (사용자 — 위협 시나리오)** *(헤드리스 확인 불가 — 커서 이동·육안 필요)*
+- [ ] **클릭 통과**: 오버레이 밖(고스트)에서 아래 앱 클릭이 통과됨
+- [ ] **호버 노출**: 오버레이 위로 커서 진입 시 또렷↔이탈 시 고스트 전환
+- [ ] 폴링 CPU 사용이 수용 범위(체감)
+
+---
+
+## Phase 3 · 은폐 강화
+
+**목표** Dock·Cmd-Tab 은폐 + 온디맨드 포커스 + Spaces 전역 + content protection(한계 실측).
+
+**산출물**
+- [x] `ActivationPolicy::Accessory`(Dock·Cmd-Tab·메뉴바 숨김) — setup의 `&mut App`에서 호출(#9244 회피)
+- [x] 입력 필요 시 온디맨드 포커스 — 드래그 스트립 클릭 시 `getCurrentWindow().setFocus()`(hover마다 포커스 탈취 회피) + 패닉 복귀 시 `set_focus()`
+- [x] `set_visible_on_all_workspaces(true)`(Spaces 전역)
+- [x] `set_content_protected(true)` 적용 + 코드 주석에 macOS 15+ 무효(#14200) 명시
+
+**자동 검증**
+- [x] `cargo build` / `clippy`(무경고) / `tsc` / eslint 통과 — `set_activation_policy`·`ActivationPolicy::Accessory`·`set_visible_on_all_workspaces`·`set_content_protected` 검증됨
+- [x] activation policy를 setup의 `&mut App`에서 호출(`#[cfg(target_os="macos")]`) — 컴파일·런타임 검증
+- [x] **런타임 스모크**: Accessory+content-protect+spaces 적용 후 앱 기동·~6초 무패닉
+
+**수동 검증 (사용자 — 위협 시나리오)** *(헤드리스 확인 불가 — 육안·화면공유 필요)*
+- [ ] **앱 은폐**: Dock·Cmd-Tab·메뉴바 어디에도 안 보임
+- [ ] 입력 필요 시 포커스가 잡힘(드래그 스트립 클릭 → 키 입력 가능)
+- [ ] **화면공유(기록)**: Zoom/Meet/QuickTime 공유 시 창 노출 여부를 실측·기록(macOS 26은 노출 예상 — 확정 한계)
+
+---
+
+## Phase 4 · 폴리시 + 배포
+
+**목표** 설정 UI·상태 영속화·마지막 위치 복원·빌드 경로 정리.
+
+**산출물**
+- [x] 설정 UI(크기·평소/호버 투명도·핫존 3×3·패닉 단축키 캡처·북마크·은폐 토글) — Phase 4b
+- [x] 상태 영속화 — `serde_json`/`fs`(config dir `prefs.json`, 외부 store 플러그인 불요). 설정·북마크·마지막 URL·마지막 위치 저장 — Phase 4a/4c
+- [x] 재실행 시 복원 — 부팅 시 `load_settings`→설정/URL/opacity/창크기 적용, `set_position`으로 마지막 위치 복원 (Moved 추적 + 숨김/CloseRequested 시 영속화)
+- [x] 명령·이벤트 계약 — `get_settings`/`save_settings`로 통합 구현(opacity·hotzone·panic_shortcut·url·bookmark를 단일 Settings로 일괄 적용·영속). `reveal-state-changed` 이벤트 유지
+- [x] macOS 빌드 경로 정리 — `BUILD.md`(dev/build/미서명 실행 `xattr -dr com.apple.quarantine`/권한·한계 메모)
+
+**자동 검증**
+- [x] `cargo build` / `clippy --all-targets`(무경고) / `tsc` / eslint 통과
+- [x] Rust 단위 테스트 4종(serde 라운드트립·부분로드·기본핫존·위치 라운드트립)
+- [x] `npm run tauri build` → `Peekaboo.app` + `Peekaboo_0.1.0_aarch64.dmg` 산출(릴리스 컴파일 37.55s, exit 0)
+
+**수동 검증 (사용자)** *(헤드리스 확인 불가)*
+- [ ] 창을 옮기고 재실행 시 설정·북마크·마지막 위치 복원
+- [ ] 빌드 산출물(`.app`)이 본인 머신에서 정상 실행(`xattr` 후)
+
+---
+
+## 진행 로그
+
+- (작성 시작) Phase 0 착수 전 — 계획 수립 및 Rust 툴체인 설치 완료.
+- **Phase 0 완료** — 스캐폴딩 전체 작성, 자동 검증 5종 통과(npm/tsc/eslint/vite/cargo build). 아키텍처 결정: 메인 창 = 우리 프론트엔드(`src/`), 원격 콘텐츠는 컨테이너(iframe)로 로드해 opacity 제어. 기본 상태 = 고스트(`visible:true`).
+- **Phase 1 완료** — 패닉 전역 단축키(`⌘⇧H`, Rust 핸들러 직접 토글), iframe 뷰어, 드래그 핸들. 자동 검증 + `tauri dev` 런타임 스모크(앱 기동·무패닉) 통과. 수동 검증(전역 입력 즉시 탈출/복귀)은 사용자 머신 필요.
+- **Phase 2 완료** — Hover-Reveal: 커서 폴링 스레드(40ms, 엣지 트리거) + 클릭통과 토글 + Ghost↔Revealed 상태 머신(Rust) + `reveal-state-changed` 이벤트→프론트 opacity. 자동 검증 + hover 루프 런타임 스모크(무패닉) 통과. 수동(클릭통과·호버전환)은 사용자 머신 필요.
+- **Phase 3 완료** — 은폐 강화: Accessory(Dock·Cmd-Tab 숨김)·Spaces 전역·content protection(macOS 15+ 무효 주석)·온디맨드 포커스(드래그 스트립 클릭). 자동 검증 + 런타임 스모크(정책 적용 후 무패닉) 통과. 수동(은폐 육안·화면공유 실측)은 사용자 머신 필요.
+- **Phase 4a 완료** — 영속화 코어: `Settings`(단일 소스, `Arc<Mutex<>>` managed) + `serde_json`/`fs` 영속화(config dir, 외부 store 플러그인 불요) + 커맨드 `get_settings`/`save_settings`(동적 핫존·동적 패닉 단축키 재등록 포함). 핫존을 fraction으로 일반화. 프론트는 부팅 시 `get_settings`로 opacity CSS 변수·URL 적용. 자동 검증 + Rust 단위 테스트 3종(serde 라운드트립·부분로드·기본핫존) + 런타임 스모크 통과.
+- **Phase 4b 완료** — 설정 UI: 미니 툴바(☰ 설정·★ 북마크·✕ 패닉) + 설정 패널(URL·북마크 칩·평소/호버 투명도 슬라이더·창 크기·핫존 3×3·패닉 단축키 키캡처·항상위/Spaces/화면공유 토글). 모든 변경은 `save_settings`로 영속·적용. id 교차검증(22/22 일치) + tsc/eslint + 런타임 스모크 통과.
+- **Phase 4c 완료** — 마지막 위치 복원(물리좌표 `x/y`, `Moved` 추적 + 숨김/CloseRequested 영속화 + 시작 시 `set_position`) + 빌드/배포 문서(`BUILD.md`). 단위 테스트 4종 + clippy/build + 런타임 스모크 통과.
+- **프로덕션 번들 검증** — `npm run tauri build` 성공: 릴리스 컴파일 37.55s, `Peekaboo.app` + `Peekaboo_0.1.0_aarch64.dmg` 산출(exit 0).
+
+## 완료 요약
+
+전 단계(Phase 0 → 4c) 구현·커밋 완료. 자동 검증 게이트는 모두 통과했다:
+- 빌드: `cargo build`(dev/release) · `npm run build`(tsc+vite) · `npm run tauri build`(.app/.dmg)
+- 린트: `cargo clippy --all-targets`(무경고) · `eslint`(클린) · `tsc --noEmit`
+- 테스트: Rust 단위 4종 + 각 단계 `tauri dev` 런타임 스모크(무패닉 기동)
+
+**사용자 머신에서만 가능한 수동 검증(헤드리스 불가)** — 실제 위협 시나리오로 확인 필요:
+1. 투명·무테 창이 배경 비침으로 뜨는지(P0/P1)
+2. 다른 앱 포커스 상태에서 패닉 키(`⌘⇧H`) 즉시 숨김/복귀(P1)
+3. 오버레이 밖 클릭 통과 · 오버레이 위 호버 시 노출 전환(P2)
+4. Dock·Cmd-Tab·메뉴바 미노출 · 드래그 스트립 클릭으로 포커스(P3)
+5. 화면 공유 시 노출 여부 실측·기록(macOS 26은 노출 예상 — 확정 한계)(P3)
+6. 창 이동 후 재실행 시 설정·북마크·위치 복원 · `.app` 정상 실행(P4)
+
+검증 절차는 `BUILD.md` 참조.
