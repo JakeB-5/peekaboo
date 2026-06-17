@@ -1,12 +1,12 @@
 // Lightweight i18n for the settings/chrome UI. No dependencies.
 //
-// The UI language is auto-detected from the system locale (navigator.language in
-// the WebView) and resolved to the supported set declared in the READMEs
+// The active UI language is either an explicit user choice (persisted in the Rust
+// core as Settings.locale) or "auto", which falls back to the system locale
+// (navigator.languages in the WebView) and finally to English. resolveLocale()
+// implements that precedence over the supported set declared in the READMEs
 // (en/ko/ja/zh). Static DOM is translated via data-i18n* attributes; dynamic
-// nodes (bookmark chips, shortcut hints) call t() at creation time.
-//
-// Manual language selection (persisted via the Rust core) is intentionally left
-// for a later step — this phase ships automatic detection only.
+// nodes (bookmark chips, shortcut hints) call t() at creation time. The Settings
+// language picker applies a new choice live and persists it via the Rust core.
 
 export const SUPPORTED_LOCALES = ["en", "ko", "ja", "zh"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -29,6 +29,7 @@ export type MessageKey =
   | "panic.hide"
   | "settings.title"
   | "close"
+  | "section.general"
   | "section.content"
   | "field.bookmarks"
   | "section.display"
@@ -61,6 +62,7 @@ const en: Catalog = {
   "panic.hide": "Hide (panic)",
   "settings.title": "Peekaboo · Settings",
   close: "Close",
+  "section.general": "General",
   "section.content": "Content",
   "field.bookmarks": "Bookmarks",
   "section.display": "Display",
@@ -91,11 +93,12 @@ const ko: Catalog = {
   "panic.hide": "숨기기 (패닉)",
   "settings.title": "Peekaboo · 설정",
   close: "닫기",
+  "section.general": "일반",
   "section.content": "콘텐츠",
   "field.bookmarks": "북마크",
   "section.display": "표시",
-  "field.ghostOpacity": "평소 투명도",
-  "field.hoverOpacity": "호버 투명도",
+  "field.ghostOpacity": "평소 불투명도",
+  "field.hoverOpacity": "호버 불투명도",
   "field.windowSize": "창 크기",
   "field.hotzone": "핫존",
   "hotzone.aria": "핫존 위치",
@@ -103,15 +106,15 @@ const ko: Catalog = {
   "section.escape": "탈출 · 은폐",
   "field.panicShortcut": "패닉 단축키",
   "shortcut.placeholder": "클릭 후 키 조합 입력",
-  "field.alwaysOnTop": "항상 위",
+  "field.alwaysOnTop": "항상 위에",
   "field.allSpaces": "모든 Spaces",
   "field.screenShareHide": "화면공유 비노출",
   "field.dockHide": "Dock 숨김",
   "field.language": "언어",
   "locale.auto": "자동 (시스템)",
-  "bookmark.remove": "삭제",
+  "bookmark.remove": "제거",
   "bookmark.addChip": "+ 추가",
-  "shortcut.needModifier": "수정자 + 키 조합이 필요합니다",
+  "shortcut.needModifier": "수식 키 + 키 조합이 필요합니다",
   "shortcut.cannotRegister": "단축키를 등록할 수 없습니다",
 };
 
@@ -121,17 +124,18 @@ const ja: Catalog = {
   "panic.hide": "隠す（パニック）",
   "settings.title": "Peekaboo · 設定",
   close: "閉じる",
+  "section.general": "一般",
   "section.content": "コンテンツ",
   "field.bookmarks": "ブックマーク",
   "section.display": "表示",
   "field.ghostOpacity": "通常の不透明度",
-  "field.hoverOpacity": "ホバー時の不透明度",
+  "field.hoverOpacity": "ホバー不透明度",
   "field.windowSize": "ウィンドウサイズ",
   "field.hotzone": "ホットゾーン",
   "hotzone.aria": "ホットゾーンの位置",
   "hotzone.full": "全体",
   "section.escape": "脱出 · 隠蔽",
-  "field.panicShortcut": "パニックホットキー",
+  "field.panicShortcut": "パニックショートカット",
   "shortcut.placeholder": "クリックしてキーの組み合わせを入力",
   "field.alwaysOnTop": "常に最前面",
   "field.allSpaces": "すべての Spaces",
@@ -142,7 +146,7 @@ const ja: Catalog = {
   "bookmark.remove": "削除",
   "bookmark.addChip": "+ 追加",
   "shortcut.needModifier": "修飾キー + キーの組み合わせが必要です",
-  "shortcut.cannotRegister": "ホットキーを登録できません",
+  "shortcut.cannotRegister": "ショートカットを登録できません",
 };
 
 const zh: Catalog = {
@@ -151,6 +155,7 @@ const zh: Catalog = {
   "panic.hide": "隐藏（紧急）",
   "settings.title": "Peekaboo · 设置",
   close: "关闭",
+  "section.general": "常规",
   "section.content": "内容",
   "field.bookmarks": "书签",
   "section.display": "显示",
@@ -159,13 +164,13 @@ const zh: Catalog = {
   "field.windowSize": "窗口大小",
   "field.hotzone": "热区",
   "hotzone.aria": "热区位置",
-  "hotzone.full": "全部",
-  "section.escape": "撤离 · 隐匿",
+  "hotzone.full": "全区",
+  "section.escape": "逃离 · 隐匿",
   "field.panicShortcut": "紧急快捷键",
   "shortcut.placeholder": "点击后按下组合键",
   "field.alwaysOnTop": "始终置顶",
   "field.allSpaces": "所有 Spaces",
-  "field.screenShareHide": "屏幕共享隐藏",
+  "field.screenShareHide": "屏幕共享时隐藏",
   "field.dockHide": "从程序坞隐藏",
   "field.language": "语言",
   "locale.auto": "自动（系统）",
@@ -189,7 +194,8 @@ function systemLocales(): string[] {
 }
 
 // Match one BCP 47 tag (e.g. "ko-KR", "zh-Hans") to a supported locale by its
-// primary subtag.
+// primary subtag. This is script-insensitive: zh-Hant / zh-TW collapse to "zh"
+// and get the Simplified catalog (a documented limitation).
 function matchSupported(tag: string): Locale | undefined {
   const base = tag.toLowerCase().split("-")[0];
   return SUPPORTED_LOCALES.find((l) => l === base);
@@ -233,6 +239,13 @@ export function t(key: MessageKey): string {
   return CATALOGS[activeLocale][key];
 }
 
+// Runtime guard so an unknown data-i18n* attribute (a typo, or a key renamed in
+// the catalog but not the HTML) degrades to the existing fallback text instead of
+// silently writing `undefined`.
+function isMessageKey(key: string): key is MessageKey {
+  return key in CATALOGS.en;
+}
+
 function translateAttr(
   selector: string,
   read: (el: HTMLElement) => string | undefined,
@@ -241,8 +254,13 @@ function translateAttr(
 ): void {
   root.querySelectorAll<HTMLElement>(selector).forEach((el) => {
     const key = read(el);
-    if (key) {
-      write(el, t(key as MessageKey));
+    if (!key) {
+      return;
+    }
+    if (isMessageKey(key)) {
+      write(el, t(key));
+    } else {
+      console.warn(`[peekaboo] i18n: unknown key "${key}"`, el);
     }
   });
 }
