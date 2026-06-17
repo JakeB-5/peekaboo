@@ -10,6 +10,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Webview } from "@tauri-apps/api/webview";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
+import { applyTranslations, initLocale, isLocalePref, t } from "./i18n";
 
 interface Hotzone {
   fx: number;
@@ -30,6 +31,8 @@ interface Settings {
   content_protected: boolean;
   always_on_top: boolean;
   spaces_global: boolean;
+  /// UI language preference: a supported locale or "auto" (follow system).
+  locale: string;
 }
 
 const DEFAULT_URL = "https://example.com";
@@ -59,8 +62,15 @@ const fShortcut = need<HTMLInputElement>("f-shortcut");
 const fAot = need<HTMLInputElement>("f-aot");
 const fSpaces = need<HTMLInputElement>("f-spaces");
 const fCp = need<HTMLInputElement>("f-cp");
+const fLocale = need<HTMLSelectElement>("f-locale");
 const bookmarksEl = need<HTMLElement>("bookmarks");
 const hzGrid = need<HTMLElement>("hotzone-grid");
+
+// Resolve the UI language from the system locale and translate the static chrome
+// + settings DOM once. Dynamic nodes (bookmark chips, shortcut hints) call t()
+// at creation time. The core's settings are unaffected (locale is view-only).
+initLocale();
+applyTranslations();
 
 // Local mirror of the core's settings; the core remains the source of truth.
 let state: Settings = {
@@ -75,6 +85,7 @@ let state: Settings = {
   content_protected: true,
   always_on_top: true,
   spaces_global: true,
+  locale: "auto",
 };
 
 // Set true only after the initial get_settings succeeds. Until then save() is
@@ -226,7 +237,7 @@ function renderBookmarks(): void {
     rm.type = "button";
     rm.className = "rm";
     rm.textContent = "×";
-    rm.title = "삭제";
+    rm.title = t("bookmark.remove");
     rm.addEventListener("click", () => {
       state.bookmarks = state.bookmarks.filter((b) => b !== url);
       renderBookmarks();
@@ -240,7 +251,7 @@ function renderBookmarks(): void {
   const add = document.createElement("button");
   add.type = "button";
   add.className = "rm";
-  add.textContent = "+ 추가";
+  add.textContent = t("bookmark.addChip");
   add.addEventListener("click", addCurrentBookmark);
   bookmarksEl.append(add);
 }
@@ -279,6 +290,9 @@ function populateForm(): void {
   fAot.checked = state.always_on_top;
   fSpaces.checked = state.spaces_global;
   fCp.checked = state.content_protected;
+  // Clamp a stale/corrupt stored value back to "auto" so the select always
+  // reflects a real option.
+  fLocale.value = isLocalePref(state.locale) ? state.locale : "auto";
   renderBookmarks();
   renderHotzone();
 }
@@ -395,11 +409,20 @@ fCp.addEventListener("change", () => {
   state.content_protected = fCp.checked;
   void save();
 });
+fLocale.addEventListener("change", () => {
+  // Apply the new language live (re-resolve, re-translate static DOM, and
+  // re-render dynamic nodes that bake in translated text) before persisting.
+  state.locale = fLocale.value;
+  initLocale(state.locale);
+  applyTranslations();
+  renderBookmarks();
+  void save();
+});
 fShortcut.addEventListener("keydown", (e) => {
   e.preventDefault();
   const accel = keyToAccel(e);
   if (!accel) {
-    flashShortcutHint("수정자 + 키 조합이 필요합니다");
+    flashShortcutHint(t("shortcut.needModifier"));
     return;
   }
   const previous = state.panic_shortcut;
@@ -411,7 +434,7 @@ fShortcut.addEventListener("keydown", (e) => {
     if (!(await save())) {
       state.panic_shortcut = previous;
       fShortcut.value = previous;
-      flashShortcutHint("단축키를 등록할 수 없습니다");
+      flashShortcutHint(t("shortcut.cannotRegister"));
     }
   })();
 });
@@ -436,6 +459,16 @@ void (async () => {
   try {
     state = await invoke<Settings>("get_settings");
     loaded = true;
+    // Clamp a stale/hostile persisted locale to "auto" so a later save() self-heals
+    // prefs.json. Display already clamps everywhere, but keep the in-memory source
+    // clean too (consistent with the loaded-guard / URL-normalization defenses).
+    if (!isLocalePref(state.locale)) {
+      state.locale = "auto";
+    }
+    // Re-resolve the UI language now that the persisted preference is known
+    // (the module-load init used system detection as a pre-settings default).
+    initLocale(state.locale);
+    applyTranslations();
     applyView();
     populateForm();
     await loadUrl(state.url || DEFAULT_URL);

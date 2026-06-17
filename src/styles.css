@@ -152,7 +152,8 @@ body {
   flex: 0 0 92px;
 }
 .s-field input[type="text"],
-.s-field input[type="number"] {
+.s-field input[type="number"],
+.s-field select {
   flex: 1;
   min-width: 0;
   background: #0a0c10;
