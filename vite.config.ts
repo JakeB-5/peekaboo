@@ -26,7 +26,8 @@ export default defineConfig({
     outDir: "../dist",
     emptyOutDir: true,
     target: "es2021",
-    minify: false,
-    sourcemap: true,
+    // Release hygiene: minify and ship no source maps inside the bundled .app.
+    minify: "esbuild",
+    sourcemap: false,
   },
 });
