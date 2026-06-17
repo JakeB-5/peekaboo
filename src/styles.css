@@ -36,7 +36,10 @@ body {
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--line);
-  background: rgba(14, 18, 24, 0.98);
+  /* Transparent so the native content webview (below the chrome strip) is never
+     hidden behind an opaque body, regardless of webview z-order. The chrome
+     strip and settings panel paint their own opaque backgrounds. */
+  background: transparent;
   transition: opacity var(--reveal-transition);
 }
 

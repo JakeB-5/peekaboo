@@ -17,7 +17,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # `macos-private-api` is required for transparent windows on macOS
 # (App Store ineligible — irrelevant for a personal tool).
-tauri = { version = "2", features = ["macos-private-api"] }
+# `unstable` is required for multiwebview (the content webview added to the
+# window at runtime); `macos-private-api` is required for transparent windows.
+tauri = { version = "2", features = ["macos-private-api", "unstable"] }
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
