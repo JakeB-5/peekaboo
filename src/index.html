@@ -24,7 +24,7 @@
       <!-- Remote content is framed so we keep control of opacity/reveal.
            Some sites block framing (X-Frame-Options / CSP) — known limitation
            (feature-spec risk #3). -->
-      <iframe id="content" referrerpolicy="no-referrer" title="Peekaboo viewer"></iframe>
+      <iframe id="content" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="no-referrer" title="Peekaboo viewer"></iframe>
 
       <!-- Settings panel (screen-design §④). Hidden until the ☰ button. -->
       <section id="settings" hidden>
