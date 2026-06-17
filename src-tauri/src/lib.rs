@@ -493,6 +493,16 @@ mod tests {
         let back: Settings =
             serde_json::from_str(&serde_json::to_string(&forced).expect("ser")).expect("de");
         assert_eq!(back.locale, "ja");
+
+        // The core never interprets the value: an unsupported string round-trips
+        // verbatim (the WebView is responsible for resolving/clamping it).
+        let garbage: Settings =
+            serde_json::from_str(r#"{"locale":"xx-not-real"}"#).expect("verbatim load");
+        assert_eq!(garbage.locale, "xx-not-real");
+
+        // Only ABSENT fields default; a present-but-null locale is a type error
+        // and is rejected (load_settings then falls back to Settings::default()).
+        assert!(serde_json::from_str::<Settings>(r#"{"locale":null}"#).is_err());
     }
 
     #[test]
