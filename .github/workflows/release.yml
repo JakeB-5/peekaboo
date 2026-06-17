@@ -1,0 +1,62 @@
+name: Release
+
+# Push a SemVer tag to build and publish a macOS (Apple Silicon) .dmg:
+#   git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the GitHub Release and upload the .dmg/.app assets
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: build & publish macOS dmg (Apple Silicon)
+    runs-on: macos-14 # arm64 runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Setup Rust (aarch64-apple-darwin)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Builds .app + .dmg (per tauri.conf bundle targets) and uploads them to a
+      # GitHub Release for the pushed tag. Unsigned by design (personal tool):
+      # first launch needs a one-time Gatekeeper bypass (see releaseBody).
+      # To sign + notarize later, add the APPLE_* / signing secrets as env here.
+      - name: Build & publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Peekaboo ${{ github.ref_name }}
+          releaseDraft: false
+          prerelease: false
+          args: --target aarch64-apple-darwin
+          releaseBody: |
+            macOS (Apple Silicon) build.
+
+            **Unsigned** — on first launch, right-click Peekaboo.app → **Open**, or run:
+            `xattr -dr com.apple.quarantine /Applications/Peekaboo.app`
+
+            See `CHANGELOG.md` for changes.
