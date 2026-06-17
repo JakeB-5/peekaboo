@@ -56,6 +56,10 @@ struct Settings {
     content_protected: bool,
     always_on_top: bool,
     spaces_global: bool,
+    /// UI language preference: a supported locale ("en"/"ko"/"ja"/"zh") or
+    /// "auto" to follow the system. View-only — the core persists it verbatim
+    /// and never interprets it (the WebView resolves the active locale).
+    locale: String,
     /// Last window position in physical pixels (restored on launch).
     x: Option<i32>,
     y: Option<i32>,
@@ -75,6 +79,7 @@ impl Default for Settings {
             content_protected: true,
             always_on_top: true,
             spaces_global: true,
+            locale: "auto".to_string(),
             x: None,
             y: None,
         }
@@ -470,6 +475,24 @@ mod tests {
         let hz = Hotzone::default();
         assert!(hz.fx.abs() < 1e-9 && hz.fy.abs() < 1e-9);
         assert!((hz.fw - 1.0).abs() < 1e-9 && (hz.fh - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn locale_defaults_to_auto_and_round_trips() {
+        // Older prefs.json without `locale` must load as "auto" (follow system),
+        // not error — same #[serde(default)] guarantee as the other fields.
+        let partial = r#"{"url":"https://x.test"}"#;
+        let s: Settings = serde_json::from_str(partial).expect("partial load");
+        assert_eq!(s.locale, "auto");
+
+        // An explicit locale survives a serialize → deserialize round-trip.
+        let forced = Settings {
+            locale: "ja".to_string(),
+            ..Settings::default()
+        };
+        let back: Settings =
+            serde_json::from_str(&serde_json::to_string(&forced).expect("ser")).expect("de");
+        assert_eq!(back.locale, "ja");
     }
 
     #[test]
