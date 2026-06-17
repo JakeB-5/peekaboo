@@ -21,10 +21,10 @@
         </div>
       </div>
 
-      <!-- Remote content is framed so we keep control of opacity/reveal.
-           Some sites block framing (X-Frame-Options / CSP) — known limitation
-           (feature-spec risk #3). -->
-      <iframe id="content" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="no-referrer" title="Peekaboo viewer"></iframe>
+      <!-- The page is shown in a separate native webview (created at runtime by
+           main.ts) below this chrome strip — NOT an iframe — so sites that block
+           framing (X-Frame-Options) still load. -->
+
 
       <!-- Settings panel (screen-design §④). Hidden until the ☰ button. -->
       <section id="settings" hidden>

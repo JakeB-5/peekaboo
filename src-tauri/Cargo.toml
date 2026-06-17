@@ -21,3 +21,9 @@ tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# macOS native window opacity (NSWindow.alphaValue) for the ghost/reveal effect.
+# Versions match what Tauri already resolves, so no duplicate objc2 in the tree.
+[target."cfg(target_os = \"macos\")".dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSResponder"] }
