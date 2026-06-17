@@ -9,6 +9,7 @@
 //! (Accessory / Spaces / content protection) · 4 settings + persistence.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::{thread, time::Duration};
 
@@ -81,6 +82,11 @@ impl Default for Settings {
 }
 
 type SharedSettings = Arc<Mutex<Settings>>;
+
+/// Whether the settings panel is open. While true, the hover loop ignores the
+/// hotzone and keeps the overlay revealed + click-catching so the panel stays
+/// usable wherever the cursor is.
+type SettingsOpen = Arc<AtomicBool>;
 
 /// Cursor polling interval (~25 fps). Trade-off between reveal responsiveness
 /// and idle CPU (roadmap risk #4). Edge-triggered.
@@ -194,7 +200,7 @@ fn point_on_any_monitor(win: &WebviewWindow, x: i32, y: i32) -> bool {
 /// Reveal state machine driver (architecture.html §④): poll the global cursor,
 /// hit-test the (configurable) hotzone, flip Ghost/Revealed on edges only.
 /// Suspended while hidden (panic); re-evaluated on the next show.
-fn spawn_hover_loop(win: WebviewWindow, settings: SharedSettings) {
+fn spawn_hover_loop(win: WebviewWindow, settings: SharedSettings, settings_open: SettingsOpen) {
     thread::spawn(move || {
         let mut inside_prev: Option<bool> = None;
         loop {
@@ -202,6 +208,20 @@ fn spawn_hover_loop(win: WebviewWindow, settings: SharedSettings) {
 
             if !win.is_visible().unwrap_or(false) {
                 inside_prev = None;
+                continue;
+            }
+
+            // While the settings panel is open, ignore the hotzone: keep the
+            // overlay revealed and click-catching so every control is reachable
+            // regardless of cursor position.
+            if settings_open.load(Ordering::Relaxed) {
+                if inside_prev != Some(true) {
+                    if let Err(e) = win.set_ignore_cursor_events(false) {
+                        eprintln!("[peekaboo] set_ignore_cursor_events failed: {e}");
+                    }
+                    let _ = win.emit("reveal-state-changed", "revealed");
+                    inside_prev = Some(true);
+                }
                 continue;
             }
 
@@ -235,6 +255,20 @@ fn get_settings(state: State<'_, SharedSettings>) -> Settings {
     // A read must never crash the command layer: recover the guard if the mutex
     // was poisoned, mirroring save_settings' graceful handling.
     state.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// The WebView reports settings-panel open/close so the hover loop can ignore
+/// the hotzone while it is open. Applies immediately on open for instant
+/// feedback (no wait for the next poll).
+#[tauri::command]
+fn set_settings_open(app: AppHandle, state: State<'_, SettingsOpen>, open: bool) {
+    state.store(open, Ordering::Relaxed);
+    if open {
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.set_ignore_cursor_events(false);
+            let _ = win.emit("reveal-state-changed", "revealed");
+        }
+    }
 }
 
 #[tauri::command]
@@ -275,6 +309,8 @@ fn save_settings(
 pub fn run() {
     let settings: SharedSettings = Arc::new(Mutex::new(Settings::default()));
     let settings_for_setup = settings.clone();
+    let settings_open: SettingsOpen = Arc::new(AtomicBool::new(false));
+    let settings_open_for_loop = settings_open.clone();
 
     tauri::Builder::default()
         .plugin(
@@ -290,7 +326,12 @@ pub fn run() {
                 .build(),
         )
         .manage(settings)
-        .invoke_handler(tauri::generate_handler![get_settings, save_settings])
+        .manage(settings_open)
+        .invoke_handler(tauri::generate_handler![
+            get_settings,
+            save_settings,
+            set_settings_open
+        ])
         .setup(move |app| {
             let handle = app.handle().clone();
             let loaded = load_settings(&handle);
@@ -355,7 +396,11 @@ pub fn run() {
                     _ => {}
                 });
 
-                spawn_hover_loop(win, settings_for_setup.clone());
+                spawn_hover_loop(
+                    win,
+                    settings_for_setup.clone(),
+                    settings_open_for_loop.clone(),
+                );
             }
             Ok(())
         })

@@ -261,15 +261,22 @@ function flashShortcutHint(msg: string): void {
   }, 1400);
 }
 
-// ---- wiring ----
-need<HTMLButtonElement>("btn-settings").addEventListener("click", () => {
-  panel.hidden = !panel.hidden;
-  if (!panel.hidden) {
+// Open/close the settings panel and tell the core, so the hover loop ignores
+// the hotzone while it's open (keeps the panel revealed + clickable anywhere).
+function setSettingsOpen(open: boolean): void {
+  panel.hidden = !open;
+  void invoke("set_settings_open", { open });
+  if (open) {
     populateForm();
   }
+}
+
+// ---- wiring ----
+need<HTMLButtonElement>("btn-settings").addEventListener("click", () => {
+  setSettingsOpen(panel.hidden);
 });
 need<HTMLButtonElement>("btn-close").addEventListener("click", () => {
-  panel.hidden = true;
+  setSettingsOpen(false);
 });
 need<HTMLButtonElement>("btn-bookmark").addEventListener("click", addCurrentBookmark);
 need<HTMLButtonElement>("btn-panic").addEventListener("click", () => {
@@ -341,7 +348,7 @@ fShortcut.addEventListener("keydown", (e) => {
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !panel.hidden) {
-    panel.hidden = true;
+    setSettingsOpen(false);
   }
 });
 
