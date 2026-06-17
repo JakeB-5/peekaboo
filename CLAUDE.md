@@ -14,9 +14,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 들킬 위기에 **전역 단축키(패닉 키) 한 번으로 즉시 숨긴다** — 창에 포커스가 없어도 동작해야 한다.
 - 화면 공유 / 화면 녹화에 **잡히지 않아야** 한다(스텔스의 핵심).
 
-## 현재 상태 (중요)
+## 현재 상태
 
-이 저장소는 **아직 비어 있는 greenfield 프로젝트**다. 소스 코드, 빌드 설정, 의존성이 전혀 없다. 따라서 아래의 "기술 스택 / 명령 / 아키텍처"는 *구현된 사실이 아니라 확정된 방향과 예정 설계*다. 첫 작업은 보통 스캐폴딩이며, 그 전까지는 아래 명령들이 동작하지 않는다.
+**v0.1.0 구현 완료.** Phase 0–4(스캐폴딩 → MVP/패닉 → hover-reveal → 은폐 → 설정·영속화·배포)가 구현·머지됐다. 자동 게이트(빌드·clippy·eslint·tsc·단위 테스트)는 통과 상태이며, 실제 스텔스 동작(투명·화면공유 비노출·전역 패닉·클릭 통과·은폐)은 사용자 머신에서 수동 검증한다(`BUILD.md`·`PLAN.md` 참고). 아래 "기술 스택 / 명령 / 아키텍처"는 구현된 사실을 반영한다.
 
 ## 확정된 기술 방향
 
@@ -45,9 +45,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 위 macOS 기능(투명·content protection·activation policy·ignore cursor events)은 Tauri 버전에 따라 정확한 API 이름/위치가 다르다. 구현 전 **반드시 Tauri v2 공식 문서로 확인**한다(context7 또는 `document-specialist` 경유). 메모리에 의존하지 말 것.
 - 패닉 키는 "숨김"뿐 아니라 **흔적 최소화**(창 위치/스크롤 복원, 직전 상태 비노출)까지 고려해야 진짜 탈출이 된다.
 
-## 개발 명령 (스캐폴딩 완료 후 적용)
+## 개발 명령
 
-아직 동작하지 않는다. Tauri v2 표준 흐름 기준:
+Tauri v2 표준 흐름:
 
 ```bash
 # 개발 실행 (Vite dev server + Tauri 창)
@@ -57,11 +57,11 @@ npm run tauri dev
 npm run tauri build
 ```
 
-프론트엔드 검증(전역 정책의 cache-busting 플래그 사용):
+프론트엔드 검증:
 ```bash
 npx tsc --noEmit
-npx eslint --quiet .
-npx vitest run --no-cache
+npx eslint .
+npm run build   # tsc --noEmit + vite build
 ```
 
 Rust(`src-tauri`) 측:
@@ -74,6 +74,51 @@ cargo test  --manifest-path src-tauri/Cargo.toml
 ## 검증 우선순위
 
 스텔스 앱은 "기능이 된다"가 아니라 "들키지 않는다"가 합격선이다. 변경 후 다음을 실제로 확인한다: 화면 공유 시 창이 보이지 않는가 / 다른 앱이 포커스를 가진 상태에서 패닉 키가 즉시 듣는가 / dock·Cmd-Tab에 노출되지 않는가 / hover 밖에서 클릭이 아래 창으로 통과되는가.
+
+## 버전 관리 (Git 워크플로)
+
+이 저장소의 통합 브랜치는 `main`이다 — 이 repo에는 `dev`가 없으므로, 전역 CLAUDE.md의 "dev에서 분기" 규칙 대신 `main`을 기준으로 한다. 아래는 이 프로젝트에서 실제로 쓰는 규칙이다.
+
+**브랜치**
+- `main`에 직접 커밋하지 않는다. 항상 작업 브랜치에서 작업한다.
+- 브랜치명은 목적 + 이름: `feat/<name>` · `fix/<name>` · `docs/<name>` · `chore/<name>`. `main`에서 분기한다.
+  ```bash
+  git checkout -b feat/<name> main
+  ```
+- shared 브랜치(`main`, 이미 푸시한 작업 브랜치)에 force-push 금지.
+
+**커밋**
+- Conventional Commits + scope를 쓴다: `feat(core):` · `fix(ui):` · `docs(readme):` · `chore:` 등. scope는 변경 영역(core=Rust 코어, ui=frontend, build/readme 등).
+- 의미 단위로 **atomic** 하게 나눈다(예: Rust 코어 픽스와 frontend 픽스는 별도 커밋). 멀티 파일 변경도 논리 단위로 쪼갠다.
+- 커밋 **메시지는 영어**(전역 언어 정책). 제목은 한 줄 요약, 본문은 변경 요약 + 마지막에 검증 결과(예: `Verified: cargo clippy ..., tests 4/4`).
+- 모든 커밋 끝에 trailer를 붙인다:
+  ```
+  Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+  ```
+
+**커밋·푸시 전 검증 게이트 (필수)**
+
+커밋/푸시 전 관련 게이트를 모두 통과시킨다(전역 강제 검증 정책과 동일).
+- Frontend: `npx tsc --noEmit` · `npx eslint .` · `npm run build`
+- Rust: `cargo fmt --manifest-path src-tauri/Cargo.toml` · `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` · `cargo test --manifest-path src-tauri/Cargo.toml`
+- 환경 주의: `cargo`가 PATH에 없을 수 있다 → `export PATH="$HOME/.cargo/bin:$PATH"`. node는 nvm 경로(`$HOME/.nvm/...`).
+
+**푸시 · PR · 머지**
+- 푸시: `git push -u origin <branch>`.
+- PR은 `main`을 타깃으로 연다. 본문은 한글 가능(프로젝트 문서 언어 정책). 요약 / 검증(자동·수동) / 알려진 한계를 적는다.
+- 머지는 **merge commit**으로 해서 phase·atomic 커밋 히스토리를 `main`에 보존한다(squash 지양). 머지 후 브랜치는 기본 유지(삭제는 명시 요청 시).
+
+**타이밍 · 추적 위생**
+- 커밋·푸시·머지는 **사용자가 요청할 때만** 수행한다(임의 커밋 금지).
+- 빌드 산출물·로컬 상태는 추적하지 않는다: `dist/` · `src-tauri/target/` · `src-tauri/gen/` · `node_modules/` · `.omc/`는 `.gitignore`로 제외(이미 반영됨).
+- README용 이미지 등 바이너리는 `docs/images/`에 두고, 리포 비대화를 피하도록 크기를 최적화한다.
+
+**릴리즈 (버전 · 태그)**
+- 버전 체계는 SemVer(`MAJOR.MINOR.PATCH`). 버전을 올릴 때는 **세 곳을 동시에** 맞춘다: `package.json` · `src-tauri/Cargo.toml` · `src-tauri/tauri.conf.json`(현재 모두 `0.1.0`).
+- `CHANGELOG.md`는 Keep a Changelog 형식. 변경은 `[Unreleased]`에 누적하다가, 릴리즈 시 버전·날짜 섹션으로 확정하고 하단 비교 링크를 갱신한다.
+- 릴리즈는 별도 커밋(`chore(release): vX.Y.Z`) 후 annotated tag를 만든다: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.
+- 배포 산출물은 `npm run tauri build`의 `.app` / `.dmg`. 개인용 미서명 실행은 `BUILD.md`의 `xattr -dr com.apple.quarantine` 절차를 따른다.
+- bundle `identifier` 변경은 기존 `prefs.json`을 orphan시키고 TCC 권한을 재요청하므로 **배포 전에** 확정한다(현재 `com.jakeb5.peekaboo`).
 
 ## 작업 방식
 
