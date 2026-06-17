@@ -3,6 +3,19 @@
 본 프로젝트의 주요 변경 사항을 기록한다. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 버전 체계는 [Semantic Versioning](https://semver.org/lang/ko/)을 따른다.
 
+## [Unreleased]
+
+다국어 지원(i18n) — 지원 언어셋 선언 + 설정 UI 현지화 + 인앱 언어 선택.
+
+### Added
+- 4개 언어 README에 "지원 언어" 섹션 — 지원 언어셋(en/ko/ja/zh)을 BCP 47 코드와 함께 명시.
+- 설정·크롬 UI 다국어 지원(`src/i18n.ts`) — en/ko/ja/zh. 정적 DOM은 `data-i18n*` 속성으로, 동적 노드(북마크 칩·단축키 안내)는 `t()`로 번역. 의존성 추가 없음.
+- 설정 패널에 **언어 선택**(Auto / English / 한국어 / 日本語 / 中文) — 선택 즉시 UI에 반영되고 `prefs.json`에 영속화된다. 기본값 `auto`는 시스템 로케일을 따른다.
+
+### Changed
+- 프론트엔드 UI 문자열을 한국어 하드코딩에서 i18n 카탈로그로 분리. 미지원·`auto` 로케일의 폴백은 영어(`README.md` 기준), `<html lang>`은 활성 로케일로 설정.
+- `Settings`에 `locale` 필드 추가 — Rust 코어는 해석 없이 verbatim 영속화하며, `locale` 없는 구버전 `prefs.json`은 `#[serde(default)]`로 `auto`로 폴백한다.
+
 ## [0.1.2] - 2026-06-17
 
 주요 사이트 로딩(아키텍처 변경) + 설정 UX 수정 + 배포 서명.
@@ -61,6 +74,7 @@
 - content protection은 macOS 15(Sequoia)+ 화면 공유를 막지 못함(ScreenCaptureKit가 `NSWindowSharingNone` 무시, Tauri #14200). 실질 방어선은 패닉 단축키(사전/즉시 숨김).
 - 일부 사이트는 iframe 임베드 차단(X-Frame-Options / CSP).
 
+[Unreleased]: https://github.com/JakeB-5/peekaboo/compare/v0.1.2...HEAD
 [0.1.2]: https://github.com/JakeB-5/peekaboo/releases/tag/v0.1.2
 [0.1.1]: https://github.com/JakeB-5/peekaboo/releases/tag/v0.1.1
 [0.1.0]: https://github.com/JakeB-5/peekaboo/releases/tag/v0.1.0
