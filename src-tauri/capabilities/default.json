@@ -1,24 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Peekaboo capability set — window control + panic global shortcut",
+  "description": "Peekaboo capability set — only the window commands the WebView invokes (hide, set-focus, drag). All other window control and the panic global shortcut run from the Rust core, where the ACL does not apply.",
   "platforms": ["macOS"],
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "core:window:allow-set-always-on-top",
-    "core:window:allow-set-ignore-cursor-events",
-    "core:window:allow-cursor-position",
-    "core:window:allow-set-content-protected",
-    "core:window:allow-set-focus",
     "core:window:allow-hide",
-    "core:window:allow-show",
-    "core:window:allow-set-position",
-    "core:window:allow-set-size",
-    "core:window:allow-start-dragging",
-    "core:window:allow-set-visible-on-all-workspaces",
-    "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister",
-    "global-shortcut:allow-is-registered"
+    "core:window:allow-set-focus",
+    "core:window:allow-start-dragging"
   ]
 }
