@@ -9,6 +9,7 @@
 //! (Accessory / Spaces / content protection) · 4 settings + persistence.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::{thread, time::Duration};
 
@@ -82,6 +83,11 @@ impl Default for Settings {
 
 type SharedSettings = Arc<Mutex<Settings>>;
 
+/// Whether the settings panel is open. While true, the hover loop ignores the
+/// hotzone and keeps the overlay revealed + click-catching so the panel stays
+/// usable wherever the cursor is.
+type SettingsOpen = Arc<AtomicBool>;
+
 /// Cursor polling interval (~25 fps). Trade-off between reveal responsiveness
 /// and idle CPU (roadmap risk #4). Edge-triggered.
 const HOVER_POLL: Duration = Duration::from_millis(40);
@@ -127,6 +133,22 @@ fn apply_window_settings(win: &WebviewWindow, s: &Settings) {
     }
 }
 
+/// Set the whole overlay's opacity natively via NSWindow alphaValue. Once the
+/// content lives in a separate native webview, CSS opacity can't fade it, so the
+/// ghost/reveal effect fades the window itself.
+#[cfg(target_os = "macos")]
+fn set_overlay_alpha(win: &WebviewWindow, alpha: f64) {
+    use objc2_app_kit::NSWindow;
+    if let Ok(ptr) = win.ns_window() {
+        // Safety: ns_window() returns a valid NSWindow* for this window's lifetime.
+        let ns_window = unsafe { &*(ptr as *mut NSWindow) };
+        ns_window.setAlphaValue(alpha);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_overlay_alpha(_win: &WebviewWindow, _alpha: f64) {}
+
 fn toggle_overlay(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         if win.is_visible().unwrap_or(false) {
@@ -141,23 +163,19 @@ fn toggle_overlay(app: &AppHandle) {
         } else {
             let _ = win.show();
             let _ = win.set_focus();
-            // Re-assert stealth-critical window properties on every re-show:
-            // macOS can drop content protection / always-on-top across some
-            // hide/show or display-reconfiguration transitions, and the panic
-            // re-show is the most safety-critical moment to guarantee them.
+            // Re-assert stealth-critical window properties and start from a safe
+            // ghost state (faint + click-through) on every re-show: macOS can drop
+            // content protection across hide/show transitions, and the panic
+            // re-show must never reappear at full opacity or swallow clicks.
             if let Some(state) = app.try_state::<SharedSettings>() {
                 if let Ok(s) = state.lock() {
                     apply_window_settings(&win, &s);
+                    set_overlay_alpha(&win, s.ghost_opacity);
                 }
             }
-            // Start from a safe ghost state: click-through on and content
-            // ghosted, so the overlay never reappears at the previous revealed
-            // opacity (visible flash) or swallows clicks until the hover loop
-            // re-evaluates the cursor on its next poll.
             if let Err(e) = win.set_ignore_cursor_events(true) {
                 eprintln!("[peekaboo] set_ignore_cursor_events failed: {e}");
             }
-            let _ = win.emit("reveal-state-changed", "ghost");
         }
     }
 }
@@ -194,7 +212,7 @@ fn point_on_any_monitor(win: &WebviewWindow, x: i32, y: i32) -> bool {
 /// Reveal state machine driver (architecture.html §④): poll the global cursor,
 /// hit-test the (configurable) hotzone, flip Ghost/Revealed on edges only.
 /// Suspended while hidden (panic); re-evaluated on the next show.
-fn spawn_hover_loop(win: WebviewWindow, settings: SharedSettings) {
+fn spawn_hover_loop(win: WebviewWindow, settings: SharedSettings, settings_open: SettingsOpen) {
     thread::spawn(move || {
         let mut inside_prev: Option<bool> = None;
         loop {
@@ -205,23 +223,35 @@ fn spawn_hover_loop(win: WebviewWindow, settings: SharedSettings) {
                 continue;
             }
 
+            // While the settings panel is open, ignore the hotzone: keep the
+            // overlay revealed and click-catching so every control is reachable
+            // regardless of cursor position.
+            if settings_open.load(Ordering::Relaxed) {
+                if inside_prev != Some(true) {
+                    if let Err(e) = win.set_ignore_cursor_events(false) {
+                        eprintln!("[peekaboo] set_ignore_cursor_events failed: {e}");
+                    }
+                    let rop = settings.lock().map(|s| s.revealed_opacity).unwrap_or(1.0);
+                    set_overlay_alpha(&win, rop);
+                    inside_prev = Some(true);
+                }
+                continue;
+            }
+
             let Ok(cursor) = win.cursor_position() else {
                 continue;
             };
-            let hz = settings
+            let (hz, ghost_op, revealed_op) = settings
                 .lock()
-                .map(|s| s.hotzone.clone())
-                .unwrap_or_default();
+                .map(|s| (s.hotzone.clone(), s.ghost_opacity, s.revealed_opacity))
+                .unwrap_or_else(|_| (Hotzone::default(), 0.08, 1.0));
             let inside = hotzone_contains(&win, cursor, &hz);
 
             if Some(inside) != inside_prev {
                 if let Err(e) = win.set_ignore_cursor_events(!inside) {
                     eprintln!("[peekaboo] set_ignore_cursor_events failed: {e}");
                 }
-                let _ = win.emit(
-                    "reveal-state-changed",
-                    if inside { "revealed" } else { "ghost" },
-                );
+                set_overlay_alpha(&win, if inside { revealed_op } else { ghost_op });
                 inside_prev = Some(inside);
             }
         }
@@ -235,6 +265,24 @@ fn get_settings(state: State<'_, SharedSettings>) -> Settings {
     // A read must never crash the command layer: recover the guard if the mutex
     // was poisoned, mirroring save_settings' graceful handling.
     state.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// The WebView reports settings-panel open/close so the hover loop can ignore
+/// the hotzone while it is open. Applies immediately on open for instant
+/// feedback (no wait for the next poll).
+#[tauri::command]
+fn set_settings_open(app: AppHandle, state: State<'_, SettingsOpen>, open: bool) {
+    state.store(open, Ordering::Relaxed);
+    if open {
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.set_ignore_cursor_events(false);
+            if let Some(s) = app.try_state::<SharedSettings>() {
+                if let Ok(g) = s.lock() {
+                    set_overlay_alpha(&win, g.revealed_opacity);
+                }
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -275,6 +323,8 @@ fn save_settings(
 pub fn run() {
     let settings: SharedSettings = Arc::new(Mutex::new(Settings::default()));
     let settings_for_setup = settings.clone();
+    let settings_open: SettingsOpen = Arc::new(AtomicBool::new(false));
+    let settings_open_for_loop = settings_open.clone();
 
     tauri::Builder::default()
         .plugin(
@@ -290,7 +340,12 @@ pub fn run() {
                 .build(),
         )
         .manage(settings)
-        .invoke_handler(tauri::generate_handler![get_settings, save_settings])
+        .manage(settings_open)
+        .invoke_handler(tauri::generate_handler![
+            get_settings,
+            save_settings,
+            set_settings_open
+        ])
         .setup(move |app| {
             let handle = app.handle().clone();
             let loaded = load_settings(&handle);
@@ -326,6 +381,8 @@ pub fn run() {
 
             if let Some(win) = app.get_webview_window("main") {
                 apply_window_settings(&win, &loaded);
+                // Start faint (ghost) — opacity is now native (NSWindow alpha).
+                set_overlay_alpha(&win, loaded.ghost_opacity);
 
                 // Restore the last window position (physical pixels) only if it
                 // still lands on an attached monitor — a display change could
@@ -347,6 +404,21 @@ pub fn run() {
                             s.y = Some(pos.y);
                         }
                     }
+                    tauri::WindowEvent::Resized(size) => {
+                        // Reflect a manual (edge-drag) resize into the source-of-
+                        // truth settings and the frontend, so the panel shows the
+                        // live size and the next save doesn't snap the window back.
+                        if let Some(w) = handle_for_events.get_webview_window("main") {
+                            let scale = w.scale_factor().unwrap_or(1.0);
+                            let lw = size.width as f64 / scale;
+                            let lh = size.height as f64 / scale;
+                            if let Ok(mut s) = settings_for_events.lock() {
+                                s.width = lw;
+                                s.height = lh;
+                            }
+                            let _ = w.emit("window-resized", (lw, lh));
+                        }
+                    }
                     tauri::WindowEvent::CloseRequested { .. } => {
                         if let Ok(s) = settings_for_events.lock() {
                             let _ = persist_settings(&handle_for_events, &s);
@@ -355,7 +427,11 @@ pub fn run() {
                     _ => {}
                 });
 
-                spawn_hover_loop(win, settings_for_setup.clone());
+                spawn_hover_loop(
+                    win,
+                    settings_for_setup.clone(),
+                    settings_open_for_loop.clone(),
+                );
             }
             Ok(())
         })

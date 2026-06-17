@@ -8,6 +8,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Webview } from "@tauri-apps/api/webview";
+import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 
 interface Hotzone {
   fx: number;
@@ -43,8 +45,6 @@ function need<T extends HTMLElement>(id: string): T {
 
 const appWindow = getCurrentWindow();
 
-const viewer = need<HTMLElement>("viewer");
-const content = need<HTMLIFrameElement>("content");
 const chrome = need<HTMLElement>("chrome");
 const panel = need<HTMLElement>("settings");
 
@@ -91,19 +91,84 @@ function applyView(): void {
   root.style.setProperty("--revealed-opacity", String(state.revealed_opacity));
 }
 
-// Only ever navigate the viewer to http(s). A javascript:/data:/file: URL would
-// run in the iframe document context; we never hand arbitrary schemes to it.
-function isHttpUrl(url: string): boolean {
+// Normalize user input to an http(s) URL: a bare host like "example.com" becomes
+// "https://example.com". Returns null for anything that can't be an http(s) URL,
+// so javascript:/data:/file: never reach the iframe.
+function normalizeUrl(input: string): string | null {
+  const raw = input.trim();
+  if (!raw) {
+    return null;
+  }
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
   try {
-    const proto = new URL(url).protocol;
-    return proto === "http:" || proto === "https:";
+    const u = new URL(withScheme);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-function loadUrl(url: string): void {
-  content.src = isHttpUrl(url) ? url : "about:blank";
+// ---- content webview ----------------------------------------------------
+// The page is shown in a separate native webview (top-level navigation), not an
+// iframe, so sites that block framing (X-Frame-Options) still load. Ghost/reveal
+// opacity is applied natively by the Rust core (NSWindow alpha).
+const STRIP = 28; // logical px height of the chrome strip (matches styles.css)
+let contentView: Webview | null = null;
+let contentSeq = 0;
+
+async function windowLogicalSize(): Promise<{ w: number; h: number }> {
+  const sf = await appWindow.scaleFactor();
+  const sz = await appWindow.innerSize();
+  return { w: sz.width / sf, h: sz.height / sf };
+}
+
+// Navigate the viewer by (re)creating the content webview below the chrome strip.
+// Recreating is the reliable way to change the loaded page.
+async function loadUrl(input: string): Promise<void> {
+  const target = normalizeUrl(input);
+  if (!target) {
+    return;
+  }
+  try {
+    const { w, h } = await windowLogicalSize();
+    const next = new Webview(appWindow, `content-${++contentSeq}`, {
+      url: target,
+      x: 0,
+      y: STRIP,
+      width: w,
+      height: Math.max(0, h - STRIP),
+    });
+    next.once("tauri://created", () => {
+      const prev = contentView;
+      contentView = next;
+      if (prev) {
+        void prev.close();
+      }
+    });
+    next.once("tauri://error", (e) => {
+      console.warn("[peekaboo] content webview error:", e);
+    });
+  } catch (err) {
+    console.warn("[peekaboo] loadUrl failed:", err);
+  }
+}
+
+async function resizeContent(): Promise<void> {
+  if (!contentView) {
+    return;
+  }
+  const { w, h } = await windowLogicalSize();
+  void contentView.setSize(new LogicalSize(w, Math.max(0, h - STRIP)));
+  void contentView.setPosition(new LogicalPosition(0, STRIP));
+}
+
+// Park the content webview offscreen while the settings panel is open, so the
+// panel (in the chrome webview underneath) is visible; restore it on close.
+function setContentHidden(hidden: boolean): void {
+  if (!contentView) {
+    return;
+  }
+  void contentView.setPosition(new LogicalPosition(0, hidden ? 100000 : STRIP));
 }
 
 async function save(): Promise<boolean> {
@@ -130,10 +195,10 @@ function hostLabel(url: string): string {
 }
 
 function addCurrentBookmark(): void {
-  const url = state.url.trim();
+  const url = normalizeUrl(state.url);
   // Only persist http(s) bookmarks so a stored javascript:/data: URL can never
   // be re-applied to the viewer on a later session.
-  if (isHttpUrl(url) && !state.bookmarks.includes(url)) {
+  if (url && !state.bookmarks.includes(url)) {
     state.bookmarks = [...state.bookmarks, url];
     renderBookmarks();
     void save();
@@ -153,7 +218,7 @@ function renderBookmarks(): void {
     load.addEventListener("click", () => {
       state.url = url;
       fUrl.value = url;
-      loadUrl(url);
+      void loadUrl(url);
       void save();
     });
 
@@ -261,15 +326,23 @@ function flashShortcutHint(msg: string): void {
   }, 1400);
 }
 
-// ---- wiring ----
-need<HTMLButtonElement>("btn-settings").addEventListener("click", () => {
-  panel.hidden = !panel.hidden;
-  if (!panel.hidden) {
+// Open/close the settings panel and tell the core, so the hover loop ignores
+// the hotzone while it's open (keeps the panel revealed + clickable anywhere).
+function setSettingsOpen(open: boolean): void {
+  panel.hidden = !open;
+  setContentHidden(open); // hide the page webview so the panel is visible
+  void invoke("set_settings_open", { open });
+  if (open) {
     populateForm();
   }
+}
+
+// ---- wiring ----
+need<HTMLButtonElement>("btn-settings").addEventListener("click", () => {
+  setSettingsOpen(panel.hidden);
 });
 need<HTMLButtonElement>("btn-close").addEventListener("click", () => {
-  panel.hidden = true;
+  setSettingsOpen(false);
 });
 need<HTMLButtonElement>("btn-bookmark").addEventListener("click", addCurrentBookmark);
 need<HTMLButtonElement>("btn-panic").addEventListener("click", () => {
@@ -282,9 +355,13 @@ need<HTMLButtonElement>("hz-full").addEventListener("click", () => {
 });
 
 fUrl.addEventListener("change", () => {
-  state.url = fUrl.value.trim();
-  loadUrl(state.url);
-  void save();
+  const url = normalizeUrl(fUrl.value);
+  if (url) {
+    state.url = url;
+    fUrl.value = url; // reflect the normalization (e.g. added https://)
+    void loadUrl(url);
+    void save();
+  }
 });
 fGhost.addEventListener("input", () => {
   state.ghost_opacity = Number(fGhost.value) / 100;
@@ -341,7 +418,7 @@ fShortcut.addEventListener("keydown", (e) => {
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !panel.hidden) {
-    panel.hidden = true;
+    setSettingsOpen(false);
   }
 });
 
@@ -353,28 +430,31 @@ chrome.addEventListener("pointerdown", () => {
 });
 
 // ---- boot ----
-// Do NOT point the iframe at any remote host until settings resolve: loading
-// DEFAULT_URL eagerly would fire a request to a fixed third-party host on every
-// launch (trace leak) and flash the placeholder before the user's real page.
-viewer.dataset.state = "ghost";
-
+// Open the content webview only after settings resolve, so we load the user's
+// real URL (not a remote default) on every launch.
 void (async () => {
   try {
     state = await invoke<Settings>("get_settings");
     loaded = true;
     applyView();
-    loadUrl(state.url || DEFAULT_URL);
     populateForm();
+    await loadUrl(state.url || DEFAULT_URL);
   } catch (err) {
     console.warn("[peekaboo] get_settings failed:", err);
-    // Stay blank rather than leaking a request to a remote default on failure.
-    content.src = "about:blank";
   }
 })();
 
-// Reflect the reveal state machine (owned by the core) onto the viewer.
-void listen<string>("reveal-state-changed", (event) => {
-  viewer.dataset.state = event.payload;
+// Reflect a manual window resize (edge-drag) into state + the settings form, so
+// the shown size stays live and a later save doesn't revert the window size.
+void listen<[number, number]>("window-resized", (event) => {
+  const [w, h] = event.payload;
+  state.width = Math.round(w);
+  state.height = Math.round(h);
+  if (!panel.hidden) {
+    fWidth.value = String(state.width);
+    fHeight.value = String(state.height);
+  }
+  void resizeContent();
 });
 
 console.info("[peekaboo] frontend booted");

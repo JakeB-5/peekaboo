@@ -36,20 +36,15 @@ body {
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--line);
-  background: rgba(14, 18, 24, 0.98);
+  /* Transparent so the native content webview (below the chrome strip) is never
+     hidden behind an opaque body, regardless of webview z-order. The chrome
+     strip and settings panel paint their own opaque backgrounds. */
+  background: transparent;
   transition: opacity var(--reveal-transition);
 }
 
-/* Reveal state machine → CSS opacity (architecture.html §②). */
-#viewer[data-state="ghost"] {
-  opacity: var(--ghost-opacity);
-}
-#viewer[data-state="revealed"] {
-  opacity: var(--revealed-opacity);
-}
-#viewer[data-state="hidden"] {
-  opacity: 0;
-}
+/* Opacity (ghost/reveal) is applied natively by the core (NSWindow alphaValue),
+   because the page now lives in a separate native webview that CSS can't fade. */
 
 /* Top strip: side toolbars + center drag handle. */
 #chrome {
@@ -98,13 +93,8 @@ body {
   cursor: grabbing;
 }
 
-/* Web viewer fills the rest of the overlay. */
-#content {
-  flex: 1 1 auto;
-  width: 100%;
-  border: 0;
-  background: #0e1218;
-}
+/* The web page is a separate native webview (positioned below the chrome strip
+   by main.ts), so there is no #content element here anymore. */
 
 /* ---- Settings panel ---- */
 #settings {
