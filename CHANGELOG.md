@@ -3,6 +3,22 @@
 본 프로젝트의 주요 변경 사항을 기록한다. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 버전 체계는 [Semantic Versioning](https://semver.org/lang/ko/)을 따른다.
 
+## [0.1.2] - 2026-06-17
+
+주요 사이트 로딩(아키텍처 변경) + 설정 UX 수정 + 배포 서명.
+
+### Added
+- 페이지를 iframe이 아닌 **네이티브 webview(최상위 로드)** 로 표시 — X-Frame-Options로 임베드를 막는 사이트(Google·Naver 등)도 로드된다(Tauri `unstable` 멀티-webview).
+
+### Fixed
+- 설정 패널이 열려 있는 동안 핫존 무시 — 커서 위치와 무관하게 패널을 조작할 수 있다.
+- 스킴 없는 주소(`example.com`)도 로드 — 자동으로 `https://`를 붙여 정규화.
+- 드래그로 창 크기 변경 시 설정에 반영되고, 다음 저장에 옛 크기로 되돌려지지 않는다.
+
+### Changed
+- 콘텐츠가 네이티브 webview이므로 고스트/노출 투명도를 **NSWindow alpha**(네이티브)로 적용.
+- 릴리스 `.app`을 ad-hoc 서명(`signingIdentity: "-"`)해 다운로드한 빌드가 "손상"으로 차단되지 않는다(첫 실행은 우클릭 → 열기; 여전히 미공증).
+
 ## [0.1.1] - 2026-06-17
 
 0.1.0 이후의 안전성 수정과 하드닝, 배포 자동화. 사용자 기능 변경은 없다(스텔스 동작 동일).
@@ -45,5 +61,6 @@
 - content protection은 macOS 15(Sequoia)+ 화면 공유를 막지 못함(ScreenCaptureKit가 `NSWindowSharingNone` 무시, Tauri #14200). 실질 방어선은 패닉 단축키(사전/즉시 숨김).
 - 일부 사이트는 iframe 임베드 차단(X-Frame-Options / CSP).
 
+[0.1.2]: https://github.com/JakeB-5/peekaboo/releases/tag/v0.1.2
 [0.1.1]: https://github.com/JakeB-5/peekaboo/releases/tag/v0.1.1
 [0.1.0]: https://github.com/JakeB-5/peekaboo/releases/tag/v0.1.0
