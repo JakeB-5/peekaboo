@@ -84,7 +84,7 @@ The full planning & design docs live in [`docs/`](docs/) — a 6-page, dark-them
 
 ## Languages
 
-Peekaboo's documentation is maintained in the languages below — the supported language set that future in-app localization (i18n) will build on. Language codes follow BCP 47.
+Peekaboo's documentation is maintained in the languages below — the supported language set the in-app localization (i18n) builds on. Language codes follow BCP 47.
 
 | Language | Code | README |
 |---|---|---|
@@ -92,6 +92,8 @@ Peekaboo's documentation is maintained in the languages below — the supported 
 | 한국어 (Korean) | `ko` | [README.ko.md](README.ko.md) |
 | 日本語 (Japanese) | `ja` | [README.ja.md](README.ja.md) |
 | 中文 (Simplified Chinese) | `zh` | [README.zh.md](README.zh.md) |
+
+The in-app UI language can be changed in **Settings** (Auto / English / 한국어 / 日本語 / 中文); *Auto* follows your system locale. Chinese is Simplified only — Traditional (`zh-Hant`) falls back to Simplified.
 
 ---
 
