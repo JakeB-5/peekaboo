@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-06-17
+
 다국어 지원(i18n) — 지원 언어셋 선언 + 설정 UI 현지화 + 인앱 언어 선택.
 
 ### Added
@@ -74,7 +76,8 @@
 - content protection은 macOS 15(Sequoia)+ 화면 공유를 막지 못함(ScreenCaptureKit가 `NSWindowSharingNone` 무시, Tauri #14200). 실질 방어선은 패닉 단축키(사전/즉시 숨김).
 - 일부 사이트는 iframe 임베드 차단(X-Frame-Options / CSP).
 
-[Unreleased]: https://github.com/JakeB-5/peekaboo/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/JakeB-5/peekaboo/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/JakeB-5/peekaboo/releases/tag/v0.1.3
 [0.1.2]: https://github.com/JakeB-5/peekaboo/releases/tag/v0.1.2
 [0.1.1]: https://github.com/JakeB-5/peekaboo/releases/tag/v0.1.1
 [0.1.0]: https://github.com/JakeB-5/peekaboo/releases/tag/v0.1.0
