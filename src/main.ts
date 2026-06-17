@@ -91,19 +91,25 @@ function applyView(): void {
   root.style.setProperty("--revealed-opacity", String(state.revealed_opacity));
 }
 
-// Only ever navigate the viewer to http(s). A javascript:/data:/file: URL would
-// run in the iframe document context; we never hand arbitrary schemes to it.
-function isHttpUrl(url: string): boolean {
+// Normalize user input to an http(s) URL: a bare host like "example.com" becomes
+// "https://example.com". Returns null for anything that can't be an http(s) URL,
+// so javascript:/data:/file: never reach the iframe.
+function normalizeUrl(input: string): string | null {
+  const raw = input.trim();
+  if (!raw) {
+    return null;
+  }
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
   try {
-    const proto = new URL(url).protocol;
-    return proto === "http:" || proto === "https:";
+    const u = new URL(withScheme);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-function loadUrl(url: string): void {
-  content.src = isHttpUrl(url) ? url : "about:blank";
+function loadUrl(input: string): void {
+  content.src = normalizeUrl(input) ?? "about:blank";
 }
 
 async function save(): Promise<boolean> {
@@ -130,10 +136,10 @@ function hostLabel(url: string): string {
 }
 
 function addCurrentBookmark(): void {
-  const url = state.url.trim();
+  const url = normalizeUrl(state.url);
   // Only persist http(s) bookmarks so a stored javascript:/data: URL can never
   // be re-applied to the viewer on a later session.
-  if (isHttpUrl(url) && !state.bookmarks.includes(url)) {
+  if (url && !state.bookmarks.includes(url)) {
     state.bookmarks = [...state.bookmarks, url];
     renderBookmarks();
     void save();
@@ -289,9 +295,15 @@ need<HTMLButtonElement>("hz-full").addEventListener("click", () => {
 });
 
 fUrl.addEventListener("change", () => {
-  state.url = fUrl.value.trim();
-  loadUrl(state.url);
-  void save();
+  const url = normalizeUrl(fUrl.value);
+  if (url) {
+    state.url = url;
+    fUrl.value = url; // reflect the normalization (e.g. added https://)
+    loadUrl(url);
+    void save();
+  } else {
+    loadUrl(fUrl.value); // nothing valid → blank the viewer
+  }
 });
 fGhost.addEventListener("input", () => {
   state.ghost_opacity = Number(fGhost.value) / 100;
