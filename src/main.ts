@@ -396,4 +396,16 @@ void listen<string>("reveal-state-changed", (event) => {
   viewer.dataset.state = event.payload;
 });
 
+// Reflect a manual window resize (edge-drag) into state + the settings form, so
+// the shown size stays live and a later save doesn't revert the window size.
+void listen<[number, number]>("window-resized", (event) => {
+  const [w, h] = event.payload;
+  state.width = Math.round(w);
+  state.height = Math.round(h);
+  if (!panel.hidden) {
+    fWidth.value = String(state.width);
+    fHeight.value = String(state.height);
+  }
+});
+
 console.info("[peekaboo] frontend booted");

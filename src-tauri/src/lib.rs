@@ -388,6 +388,21 @@ pub fn run() {
                             s.y = Some(pos.y);
                         }
                     }
+                    tauri::WindowEvent::Resized(size) => {
+                        // Reflect a manual (edge-drag) resize into the source-of-
+                        // truth settings and the frontend, so the panel shows the
+                        // live size and the next save doesn't snap the window back.
+                        if let Some(w) = handle_for_events.get_webview_window("main") {
+                            let scale = w.scale_factor().unwrap_or(1.0);
+                            let lw = size.width as f64 / scale;
+                            let lh = size.height as f64 / scale;
+                            if let Ok(mut s) = settings_for_events.lock() {
+                                s.width = lw;
+                                s.height = lh;
+                            }
+                            let _ = w.emit("window-resized", (lw, lh));
+                        }
+                    }
                     tauri::WindowEvent::CloseRequested { .. } => {
                         if let Ok(s) = settings_for_events.lock() {
                             let _ = persist_settings(&handle_for_events, &s);
