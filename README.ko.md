@@ -82,6 +82,17 @@ macOS content protection을 통한 화면 공유 비노출은 **macOS 15(Sequoia
 
 **v0.1.0 — 구현 완료.** Phase 0–4 완료: 스캐폴딩 → MVP(오버레이 + 패닉) → 스텔스 본체(hover-reveal) → 은폐 → 설정·영속화·배포. 자동 게이트(빌드·clippy·eslint·tsc·단위 테스트)는 모두 통과했고, 실제 스텔스 동작은 사용자 머신에서 수동 검증합니다. [로드맵](docs/roadmap.html)·[PLAN.md](PLAN.md) 참고.
 
+## 지원 언어
+
+Peekaboo 문서는 아래 언어로 제공됩니다 — 앞으로의 인앱 현지화(i18n)가 기반으로 삼을 지원 언어셋입니다. 언어 코드는 BCP 47을 따릅니다.
+
+| 언어 | 코드 | README |
+|---|---|---|
+| English (영어) | `en` | [README.md](README.md) |
+| 한국어 | `ko` | [README.ko.md](README.ko.md) |
+| 日本語 (일본어) | `ja` | [README.ja.md](README.ja.md) |
+| 中文 (중국어 간체) | `zh` | [README.zh.md](README.zh.md) |
+
 ---
 
 <sub>개인용 도구입니다. 책임감 있게 사용하세요. 🫣</sub>

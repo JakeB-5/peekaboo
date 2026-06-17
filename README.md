@@ -82,6 +82,17 @@ The full planning & design docs live in [`docs/`](docs/) — a 6-page, dark-them
 
 **v0.1.0 — implemented.** Phases 0–4 are done: scaffold → MVP (overlay + panic) → stealth core (hover-reveal) → concealment → settings, persistence & distribution. The automated gates (build, clippy, eslint, tsc, unit tests) pass; the real-world stealth behaviors are verified manually on your Mac. See the [roadmap](docs/roadmap.html) and [PLAN.md](PLAN.md).
 
+## Languages
+
+Peekaboo's documentation is maintained in the languages below — the supported language set that future in-app localization (i18n) will build on. Language codes follow BCP 47.
+
+| Language | Code | README |
+|---|---|---|
+| English | `en` | [README.md](README.md) |
+| 한국어 (Korean) | `ko` | [README.ko.md](README.ko.md) |
+| 日本語 (Japanese) | `ja` | [README.ja.md](README.ja.md) |
+| 中文 (Simplified Chinese) | `zh` | [README.zh.md](README.zh.md) |
+
 ---
 
 <sub>A personal tool. Use responsibly. 🫣</sub>
